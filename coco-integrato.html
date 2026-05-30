@@ -4575,6 +4575,11 @@ function buildComputiContext(){
 
 // ── VIEWS ──
 function setView(v,btn){
+  // rete di sicurezza: Backup & dati solo per ruoli ufficio
+  if(v==='backup' && !isUfficio(currentTec())){
+    alert('Il Backup e la gestione dati sono riservati all\u2019ufficio.');
+    return;
+  }
   state.activeView=v;
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
   if(btn&&btn.classList.contains('nav-item'))btn.classList.add('active');
@@ -4865,16 +4870,13 @@ function apriSheetCattura(conVoce, SR){
   if(!conVoce){ txt.focus(); return; }
 
   const rec=new SR();
-  rec.lang='it-IT'; rec.interimResults=true; rec.continuous=true; rec.maxAlternatives=1;
+  rec.lang='it-IT'; rec.interimResults=true; rec.continuous=false; rec.maxAlternatives=1;
   window._voceRec=rec;
-  let finale='';
   rec.onresult=e=>{
-    let interim='';
-    for(let i=e.resultIndex;i<e.results.length;i++){
-      const tr=e.results[i][0].transcript;
-      if(e.results[i].isFinal) finale+=tr+' '; else interim+=tr;
-    }
-    if(txt) txt.value=(finale+interim).trim();
+    // Android invia la frase "cumulativa" (cresce ogni volta): prendo
+    // SOLO l'ultima versione completa, non la somma. Niente ripetizioni.
+    const r=e.results[e.results.length-1];
+    if(txt && r && r[0]) txt.value=r[0].transcript.replace(/\s+/g,' ').trim();
   };
   rec.onerror=ev=>{
     const s=document.getElementById('voce-stato');
