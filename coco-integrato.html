@@ -772,6 +772,7 @@ textarea{resize:vertical;min-height:60px;}
   <div class="hdr-menu-sep"></div>
   <button class="hdr-menu-item" onclick="hdrMenuGo('ai')"><span class="hmi-ico">🤖</span>Coordinatore AI</button>
   <button class="hdr-menu-item" onclick="closeHdrMenu();mostraRegistroPromemoria()"><span class="hmi-ico">🗒️</span>Registro messaggi</button>
+  <button class="hdr-menu-item" onclick="ripristinaElenco()"><span class="hmi-ico">👥</span>Carica elenco persone</button>
   <button class="hdr-menu-item" onclick="hdrMenuGo('backup')"><span class="hmi-ico">💾</span>Backup &amp; dati</button>
   <div class="hdr-menu-sep"></div>
   <button class="hdr-menu-item" onclick="closeHdrMenu();vaiAlCampo()"><span class="hmi-ico">📍</span>Modalità cantiere</button>
@@ -1266,6 +1267,29 @@ function colorFor(id,arr){return COLORS[Math.abs([...String(id)].reduce((a,c)=>a
 // Ruoli che accedono alla modalità UFFICIO (app completa)
 const RUOLI_UFFICIO=['Ufficio','Coordinatore','Admin','Amministrazione','Titolare'];
 function isUfficio(t){return t&&RUOLI_UFFICIO.some(r=>(t.ruolo||'').toLowerCase().includes(r.toLowerCase()));}
+/* ── ELENCO INIZIALE PERSONE (SIE.TEL) ── */
+const ROSTER_INIZIALE=[
+ {id:'t_massimiliano',nome:'Massimiliano',ruolo:'Ufficio',pin:'1000',azienda:'SIE.TEL'},
+ {id:'t_massimo',nome:'Massimo',ruolo:'Ufficio',pin:'1100',azienda:'SIE.TEL'},
+ {id:'t_gabriele',nome:'Gabriele',ruolo:'Ufficio',pin:'1110',azienda:'SIE.TEL'},
+ {id:'t_angelo',nome:'Angelo',ruolo:'Elettricista',pin:'2580',azienda:'SIE.TEL'},
+ {id:'t_roberto',nome:'Roberto',ruolo:'Elettricista',pin:'0001',azienda:'SIE.TEL'},
+ {id:'t_emil',nome:'Emil',ruolo:'Elettricista',pin:'0002',azienda:'SIE.TEL'},
+ {id:'t_pietro_e',nome:'Pietro',ruolo:'Elettricista',pin:'0003',azienda:'SIE.TEL'},
+ {id:'t_andrea',nome:'Andrea',ruolo:'Elettricista',pin:'0004',azienda:'SIE.TEL'},
+ {id:'t_salvatore',nome:'Salvatore',ruolo:'Elettricista',pin:'0005',azienda:'SIE.TEL'},
+ {id:'t_manolo',nome:'Manolo',ruolo:'Edile',pin:'0006',azienda:'SIE.TEL'},
+ {id:'t_pietro_ed',nome:'Pietro',ruolo:'Edile',pin:'0007',azienda:'SIE.TEL'}
+];
+function ripristinaElenco(){
+  if(typeof closeHdrMenu==='function') closeHdrMenu();
+  if(!confirm('Caricare l\u2019elenco iniziale delle 11 persone?\n\nATTENZIONE: sostituisce l\u2019elenco persone attuale su QUESTO dispositivo.')) return;
+  state.tecnici=JSON.parse(JSON.stringify(ROSTER_INIZIALE));
+  state.currentTecnicoId=null;
+  save(); if(typeof renderAll==='function') renderAll();
+  alert('Elenco caricato: '+state.tecnici.length+' persone.\nVerrai riportato alla schermata di accesso.');
+  location.reload();
+}
 
 // saveCampo: nel contesto fuso salva tutto lo stato condiviso
 function saveCampo(){ save(); }
@@ -2382,6 +2406,8 @@ function cf_goToday(){
 }
 
 load();
+if(!state.tecnici||!state.tecnici.length){ state.tecnici=JSON.parse(JSON.stringify(ROSTER_INIZIALE)); save(); }
+if(state.currentTecnicoId && !getTecnico(state.currentTecnicoId)){ state.currentTecnicoId=null; }
 state.startDate=addDays(today(),-3);
 initReportMonths();
 renderAll();
@@ -2792,6 +2818,7 @@ function renderPresenze(){
     const nm=new Date(yr,mo-1,1).toLocaleDateString('it-IT',{month:'long',year:'numeric'});
     tb=`<div class="ts-toolbar"><div class="ts-date-lbl" style="text-align:left">${nm.charAt(0).toUpperCase()+nm.slice(1)}</div><div class="ts-view-btns"><button class="ts-vbtn" onclick="setTsView('day')">Giorno</button><button class="ts-vbtn active" onclick="setTsView('month')">Mese</button></div></div>`;
   }
+  tb+=`<div style="padding:6px 0 2px"><button onclick="stampaReportPresenze()" style="width:100%;padding:11px;border:none;border-radius:10px;background:var(--accent2,#2563eb);color:#fff;font-size:13px;font-weight:700">🖨️ Stampa report presenze (PDF)</button></div>`;
   if(isMonth){el.innerHTML=tb+renderTsMonth(yr,mo);return;}
   const ds=state.tsDate;
   const tSet=new Set(state.tecnici.map(t=>t.id));
@@ -2841,9 +2868,13 @@ function setTsView(v){state.tsView=v;renderPresenze();}
 function setTsViewDay(ds){state.tsDate=ds;state.tsView='day';renderPresenze();}
 
 function openModalTs(tecId,dateStr,voceId){
+  const uff=isUfficio(currentTec());
+  if(!uff) tecId=state.currentTecnicoId;   // un tecnico può inserire ore solo per sé
   state.editingTsId=voceId||null;
   const selT=document.getElementById('mts-tec');
-  selT.innerHTML=state.tecnici.map(t=>`<option value="${t.id}"${t.id===tecId?' selected':''}>${esc(t.nome)} &#8212; ${t.ruolo}</option>`).join('');
+  const lista=uff?state.tecnici:state.tecnici.filter(t=>t.id===state.currentTecnicoId);
+  selT.innerHTML=lista.map(t=>`<option value="${t.id}"${t.id===tecId?' selected':''}>${esc(t.nome)} &#8212; ${t.ruolo}</option>`).join('');
+  selT.disabled=!uff;   // il tecnico non può cambiare persona
   document.getElementById('mts-data').value=dateStr||state.tsDate||fmt(today());
   document.getElementById('mts-tipo').value='lavoro';
   document.getElementById('mts-inizio').value='08:00';
@@ -4590,9 +4621,9 @@ function buildComputiContext(){
 
 // ── VIEWS ──
 function setView(v,btn){
-  // rete di sicurezza: Backup & dati solo per ruoli ufficio
-  if(v==='backup' && !isUfficio(currentTec())){
-    alert('Il Backup e la gestione dati sono riservati all\u2019ufficio.');
+  // rete di sicurezza: viste d'ufficio (report di tutti, backup) solo per ruoli ufficio
+  if((v==='backup'||v==='report') && !isUfficio(currentTec())){
+    alert(v==='report'?'Le presenze di tutti sono riservate all\u2019ufficio.':'Il Backup e la gestione dati sono riservati all\u2019ufficio.');
     return;
   }
   state.activeView=v;
@@ -5019,6 +5050,53 @@ function autoBriefSerale(){
     localStorage.setItem('brief_serale_done',oggi);
     setTimeout(briefingSerale,600);
   }
+}
+
+/* ── STAMPA REPORT PRESENZE DEL MESE (PDF, ufficio) ── */
+function stampaReportPresenze(){
+  const val=document.getElementById('report-month').value;
+  const [yr,mo]=val.split('-').map(Number);
+  const mese=new Date(yr,mo-1,1).toLocaleDateString('it-IT',{month:'long',year:'numeric'});
+  const voci=tsForMonth(yr,mo);
+  let rows='', gL=0,gV=0,gF=0,any=false;
+  state.tecnici.forEach(t=>{
+    const tv=voci.filter(v=>v.tecnicoId===t.id);
+    if(!tv.length) return;
+    any=true;
+    const tot=calcolaTotali(tv);
+    const gg=new Set(tv.filter(v=>v.tipo!=='pausa').map(v=>v.data)).size;
+    gL+=tot.lavoro; gV+=tot.viaggio; gF+=tot.fatturabili;
+    rows+=`<tr>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee"><b style="font-size:11px;color:#111">${esc(t.nome)}</b> <span style="font-size:9px;color:#888">${esc(t.ruolo||'')}</span></td>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;font-size:11px">${gg}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px">${oreStr(tot.lavoro)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px">${oreStr(tot.viaggio)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px;font-weight:700">${oreStr(tot.fatturabili)}</td>
+    </tr>`;
+  });
+  if(!any){ alert('Nessuna presenza registrata in '+mese+'.'); return; }
+  const inner=`<div style="font-weight:700;font-size:17px;color:#111">Report presenze</div>
+    <div style="font-size:9.5px;color:#666;margin-bottom:16px">SIE.TEL · ${mese.charAt(0).toUpperCase()+mese.slice(1)} · stampato il ${new Date().toLocaleDateString('it-IT')}</div>
+    <table style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif">
+      <thead><tr style="background:#0d2b45;color:#fff">
+        <th style="padding:7px 8px;text-align:left;font-size:10px">Persona</th>
+        <th style="padding:7px 8px;text-align:center;font-size:10px">Giorni</th>
+        <th style="padding:7px 8px;text-align:right;font-size:10px">Lavoro</th>
+        <th style="padding:7px 8px;text-align:right;font-size:10px">Viaggio</th>
+        <th style="padding:7px 8px;text-align:right;font-size:10px">Fatturabili</th>
+      </tr></thead>
+      <tbody>${rows}
+        <tr style="background:#eef2f8">
+          <td style="padding:7px 8px;font-weight:700;font-size:11px">TOTALE</td>
+          <td style="padding:7px 8px"></td>
+          <td style="padding:7px 8px;text-align:right;font-weight:700;font-size:11px">${oreStr(gL)}</td>
+          <td style="padding:7px 8px;text-align:right;font-weight:700;font-size:11px">${oreStr(gV)}</td>
+          <td style="padding:7px 8px;text-align:right;font-weight:700;font-size:11px">${oreStr(gF)}</td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="font-size:8.5px;color:#999;margin-top:10px">Ore fatturabili = lavoro + viaggio. Pause escluse dal totale fatturabile.</div>`;
+  apriStampa(inner);
 }
 
 /* ── STAMPA GANTT DI UN SINGOLO LAVORO (PDF) ── */
