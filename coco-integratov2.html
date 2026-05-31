@@ -773,6 +773,7 @@ textarea{resize:vertical;min-height:60px;}
   <button class="hdr-menu-item" onclick="hdrMenuGo('ai')"><span class="hmi-ico">🤖</span>Coordinatore AI</button>
   <button class="hdr-menu-item" onclick="closeHdrMenu();mostraRegistroPromemoria()"><span class="hmi-ico">🗒️</span>Registro messaggi</button>
   <button class="hdr-menu-item" onclick="registroBriefing()"><span class="hmi-ico">📋</span>Registro briefing</button>
+  <button class="hdr-menu-item" onclick="registroRisposteAI()"><span class="hmi-ico">🤖</span>Risposte AI</button>
   <button class="hdr-menu-item" onclick="ripristinaElenco()"><span class="hmi-ico">👥</span>Carica elenco persone</button>
   <button class="hdr-menu-item" onclick="caricaMateriali()"><span class="hmi-ico">📦</span>Carica materiali</button>
   <button class="hdr-menu-item" onclick="hdrMenuGo('backup')"><span class="hmi-ico">💾</span>Backup &amp; dati</button>
@@ -857,6 +858,7 @@ textarea{resize:vertical;min-height:60px;}
       <div class="ai-input-area">
         <textarea class="ai-input" id="ai-input" placeholder="Fai una domanda..." rows="1" onkeydown="aiKeydown(event)"></textarea>
         <button class="ai-send" id="ai-claude-btn" onclick="chiediAClaudeDaInput()" title="Chiedi all'app Claude" style="background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-size:17px">📤</button>
+        <button class="ai-send" id="ai-rispo-btn" onclick="registraRispostaClaude()" title="Registra la risposta di Claude" style="background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-size:17px">📥</button>
         <button class="ai-send" id="ai-send-btn" onclick="sendAI()">↑</button>
       </div>
     </div>
@@ -1203,6 +1205,8 @@ let state={
   computoFilter:'tutti',
   promemoria:[],   // memoria operativa / promemoria vocali
   briefings:[],    // verbali/briefing operativi (più voci per lavoro)
+  aiRisposte:[],   // risposte AI archiviate (data, autore, lavoro/fase)
+  _aiCtx:null,     // contesto ultima domanda all'AI
 };
 let aiHistory=[];
 
@@ -1231,6 +1235,8 @@ function save(){
   localStorage.setItem('st_cm4',JSON.stringify(state.computi));
   localStorage.setItem('st_pm4',JSON.stringify(state.promemoria||[]));
   localStorage.setItem('st_bf4',JSON.stringify(state.briefings||[]));
+  localStorage.setItem('st_ai4',JSON.stringify(state.aiRisposte||[]));
+  localStorage.setItem('st_aictx',JSON.stringify(state._aiCtx||null));
 }
 function load(){
   try{
@@ -1248,6 +1254,8 @@ function load(){
     const cm=localStorage.getItem('st_cm4');if(cm)state.computi=JSON.parse(cm);
     const pm=localStorage.getItem('st_pm4');if(pm)state.promemoria=JSON.parse(pm);
     const bf=localStorage.getItem('st_bf4');if(bf)state.briefings=JSON.parse(bf);
+    const ai=localStorage.getItem('st_ai4');if(ai)state.aiRisposte=JSON.parse(ai);
+    const aic=localStorage.getItem('st_aictx');if(aic)state._aiCtx=JSON.parse(aic);
     // migrate old
     if(!state.commesse.length){const oc=localStorage.getItem('sietel_commesse_v1')||localStorage.getItem('st_c3');if(oc){state.commesse=JSON.parse(oc);save();}}
   }catch(err){}
@@ -3901,23 +3909,91 @@ ${buildAIContext()}`;
 }
 function sendQuickAI(msg){setView('ai',document.getElementById('nav-ai'));setTimeout(()=>sendAI(msg),100);}
 // PONTE verso l'app Claude: condivide il testo (menù Condividi) e lo copia negli appunti
-async function chiediAClaude(testo){
+async function chiediAClaude(testo,ctx){
   if(!testo||!testo.trim()){ alert('Scrivi prima una domanda.'); return; }
   testo=testo.trim();
+  // ricorda il contesto della domanda per poter archiviare la risposta
+  const t=(typeof currentTec==='function')?currentTec():null;
+  state._aiCtx=Object.assign({autore:(t&&t.nome)||'—',autoreId:(t&&t.id)||null,commessaId:null,faseId:null,briefingId:null},ctx||{},{domanda:testo,quando:Date.now()});
+  if(typeof save==='function') save();
   let copiato=false;
   try{ await navigator.clipboard.writeText(testo); copiato=true; }catch(e){}
   if(navigator.share){
     try{ await navigator.share({text:testo}); return; }catch(e){ /* annullato: prosegue */ }
   }
   if(copiato){
-    alert('Testo copiato negli appunti.\n\nApri l\u2019app Claude, tieni premuto nella casella del messaggio e tocca \u201cIncolla\u201d, poi invia.');
+    alert('Testo copiato negli appunti.\n\nApri l\u2019app Claude, tieni premuto nella casella del messaggio e tocca \u201cIncolla\u201d, poi invia.\n\nQuando hai la risposta, torna qui e usa \u201c\ud83d\udce5 Registra risposta\u201d.');
   } else {
-    // fallback estremo: mostra il testo da copiare a mano
     prompt('Copia questo testo e incollalo nell\u2019app Claude:', testo);
   }
 }
 function chiediAClaudeDaInput(){
   const t=document.getElementById('ai-input'); chiediAClaude(t?t.value:'');
+}
+/* ── ARCHIVIO RISPOSTE AI (incolla la risposta di Claude) ── */
+function registraRispostaClaude(){
+  const ctx=state._aiCtx||{};
+  const c=ctx.commessaId?(getCommessa(ctx.commessaId)||{}):null;
+  const dom=ctx.domanda?esc(ctx.domanda.slice(0,400))+(ctx.domanda.length>400?'…':''):'<i>(nessuna domanda recente registrata)</i>';
+  const inner=`
+    <div style="font-size:12px;color:var(--text3);margin-bottom:4px">Domanda inviata${c?(' · '+esc(c.nome)):''}</div>
+    <div style="background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;padding:9px;font-size:13px;color:var(--text2);margin-bottom:12px;max-height:120px;overflow:auto">${dom}</div>
+    <div style="font-size:12px;font-weight:600;margin-bottom:4px">📥 Incolla qui la risposta di Claude</div>
+    <textarea id="airisp-txt" placeholder="Tieni premuto e incolla la risposta copiata dall'app Claude…" style="width:100%;box-sizing:border-box;min-height:160px;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:10px;font-size:15px;font-family:inherit;resize:vertical"></textarea>
+    <button onclick="salvaRispostaClaude()" style="width:100%;margin-top:10px;padding:13px;border:none;border-radius:10px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;font-family:inherit">💾 Salva risposta in archivio</button>`;
+  document.body.appendChild(_bfOv('airisp-ov','📥 Registra risposta di Claude',inner));
+}
+function salvaRispostaClaude(){
+  const ta=document.getElementById('airisp-txt'); const risp=(ta&&ta.value||'').trim();
+  if(!risp){ alert('Incolla prima la risposta di Claude.'); return; }
+  const ctx=state._aiCtx||{};
+  const t=(typeof currentTec==='function')?currentTec():null;
+  state.aiRisposte=state.aiRisposte||[];
+  state.aiRisposte.push({
+    id:'ai'+Date.now(), quando:Date.now(), data:fmt(today()),
+    autore:ctx.autore||((t&&t.nome)||'—'), autoreId:ctx.autoreId||((t&&t.id)||null),
+    commessaId:ctx.commessaId||null, faseId:ctx.faseId||null, briefingId:ctx.briefingId||null,
+    domanda:ctx.domanda||'', risposta:risp
+  });
+  save();
+  const ov=document.getElementById('airisp-ov'); if(ov) ov.remove();
+  if(typeof renderAll==='function') renderAll();
+  alert('Risposta archiviata.\nLa trovi in ⋮ → 🤖 Risposte AI.');
+}
+function registroRisposteAI(){
+  if(typeof closeHdrMenu==='function') closeHdrMenu();
+  const list=(state.aiRisposte||[]).slice().sort((a,b)=>(b.quando||0)-(a.quando||0));
+  let body;
+  if(!list.length){ body='<div class="empty-state" style="padding:24px 10px"><div class="empty-big">🤖</div>Nessuna risposta archiviata.</div>'; }
+  else { body='<div class="card"><div class="inner-list">'+list.map(r=>{
+      const c=r.commessaId?(getCommessa(r.commessaId)||{nome:''}):null;
+      const f=(c&&r.faseId)?(((c.fasi||[]).find(x=>x.id===r.faseId)||{}).nome||''):'';
+      const tit=c?esc(c.nome)+(f?(' › '+esc(f)):''):'Domanda generale';
+      return `<div class="row-item" onclick="apriRispostaAI('${r.id}')" style="align-items:flex-start">
+        <div class="ri" style="flex:1"><div class="ri-nome">${tit}</div>
+        <div class="ri-meta" style="margin-top:2px">📅 ${_bfData(r.data)} · 👤 ${esc(r.autore||'—')}</div></div><span style="color:var(--text3)">›</span></div>`;
+    }).join('')+'</div></div>'; }
+  document.body.appendChild(_bfOv('airisp-reg-ov','🤖 Risposte AI ('+list.length+')',body));
+}
+function apriRispostaAI(id){
+  const r=(state.aiRisposte||[]).find(x=>x.id===id); if(!r) return;
+  const reg=document.getElementById('airisp-reg-ov'); if(reg) reg.remove();
+  const c=r.commessaId?(getCommessa(r.commessaId)||{nome:''}):null;
+  const f=(c&&r.faseId)?(((c.fasi||[]).find(x=>x.id===r.faseId)||{}).nome||''):'';
+  const inner=`
+    <div style="font-size:12px;color:var(--text3);margin-bottom:8px">📅 ${_bfData(r.data)} · 👤 ${esc(r.autore||'—')}${c?(' · '+esc(c.nome)+(f?(' › '+esc(f)):'')):''}</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:3px">Domanda</div>
+    <div style="background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;padding:9px;font-size:13px;color:var(--text2);margin-bottom:12px;white-space:pre-wrap;max-height:140px;overflow:auto">${esc(r.domanda||'')}</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:3px">Risposta di Claude</div>
+    <div style="background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;padding:10px;font-size:14px;white-space:pre-wrap">${esc(r.risposta||'')}</div>
+    <button onclick="eliminaRispostaAI('${r.id}')" style="width:100%;margin-top:10px;padding:11px;border:none;border-radius:10px;background:transparent;color:#ef4444;font-size:13px;font-family:inherit">🗑 Elimina dall'archivio</button>`;
+  document.body.appendChild(_bfOv('airisp-view-ov','🤖 Risposta archiviata',inner));
+}
+function eliminaRispostaAI(id){
+  if(!confirm('Eliminare questa risposta dall\u2019archivio?'))return;
+  state.aiRisposte=(state.aiRisposte||[]).filter(x=>x.id!==id); save();
+  const ov=document.getElementById('airisp-view-ov'); if(ov) ov.remove();
+  if(typeof renderAll==='function') renderAll();
 }
 function renderAIChat(loading){
   const chat=document.getElementById('ai-chat');
@@ -5205,6 +5281,7 @@ function apriBriefingForm(bid,cid,fid){
     <div style="display:flex;gap:8px;margin-top:6px">
       <button onclick="salvaBriefingForm()" style="flex:2;padding:13px;border:none;border-radius:10px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;font-family:inherit">💾 Salva</button>
       <button onclick="controllaBriefingForm()" style="flex:2;padding:13px;border:none;border-radius:10px;background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-weight:700;font-size:15px;font-family:inherit">🤖 Controlla</button>
+      <button onclick="registraRispostaClaude()" title="Registra la risposta di Claude" style="flex:0 0 48px;padding:13px 0;border:none;border-radius:10px;background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-weight:700;font-size:17px;font-family:inherit">📥</button>
     </div>
     ${bid?`<button onclick="eliminaBriefing('${bid}')" style="width:100%;margin-top:8px;padding:11px;border:none;border-radius:10px;background:transparent;color:#ef4444;font-size:13px;font-family:inherit">🗑 Elimina questo briefing</button>`:''}`;
   document.body.appendChild(_bfOv('brief-form-ov', bid?'📋 Modifica briefing':'📋 Nuovo briefing', inner));
@@ -5256,7 +5333,7 @@ function controllaBriefingForm(){
     `Presenti — Ufficio: ${_bfNomi(d.ufficio).join(', ')||'-'}; Tecnici: ${_bfNomi(d.tecnici).join(', ')||'-'}; Cliente: ${d.cliente||'-'}\n`+
     `Cosa fare: ${d.cosa||'(vuoto)'}\nModifiche cliente: ${d.modifiche||'(vuoto)'}\nRiferimenti: ${d.riferimenti||'(vuoto)'}\nPunti aperti: ${d.aperti||'(vuoto)'}`;
   const ov=document.getElementById('brief-form-ov'); if(ov) ov.remove();
-  chiediAClaude(prompt);
+  chiediAClaude(prompt,{commessaId:e.commessaId,faseId:d.faseId,briefingId:e.id});
 }
 
 /* ── STAMPA REPORT PRESENZE DEL MESE (PDF, ufficio) ── */
