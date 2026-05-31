@@ -1008,9 +1008,7 @@ textarea{resize:vertical;min-height:60px;}
       <div class="ff">
         <label>Materiali necessari</label>
         <div id="mf-materiali-list" style="margin-bottom:6px"></div>
-        <select id="mf-mat-sel" onchange="addMaterialeToFase()" style="font-size:13px">
-          <option value="">— aggiungi materiale —</option>
-        </select>
+        <button type="button" onclick="openMatPicker()" style="width:100%;padding:11px;border:1px dashed var(--border,#2a2f42);border-radius:10px;background:transparent;color:var(--accent,#4f9cf9);font-size:14px;font-family:inherit">➕ Aggiungi materiale</button>
       </div>
       <div class="ff"><label>Note</label><textarea id="mf-note" placeholder="Dettagli..."></textarea></div>
     </div>
@@ -1264,6 +1262,22 @@ function getFase(cid,fid){const c=state.commesse.find(x=>x.id===cid);return c?(c
 function getCommessa(id){return state.commesse.find(x=>x.id===id);}
 function getTecnico(id){return state.tecnici.find(x=>x.id===id);}
 function getMateriale(id){return state.materiali.find(x=>x.id===id);}
+function setScorta(id){const m=getMateriale(id);if(!m)return;const v=prompt('Scorta in magazzino ('+m.unita+'):',m.scorta||0);if(v===null)return;m.scorta=parseFloat(v)||0;save();if(typeof renderAll==='function')renderAll();if(typeof showMaterialeDetail==='function')showMaterialeDetail(id);}
+function materialiDaOrdinare(){
+  const agg={};
+  state.commesse.forEach(c=>(c.fasi||[]).forEach(f=>(f.materiali||[]).forEach(u=>{
+    if(u.stato!=='ordinare')return; const m=getMateriale(u.id); if(!m)return;
+    if(!agg[u.id])agg[u.id]={m,qty:0,fasi:[]};
+    agg[u.id].qty+=parseFloat(u.qty)||0; agg[u.id].fasi.push((c.nome||'')+(f.nome?(' › '+f.nome):''));
+  })));
+  return Object.values(agg).sort((a,b)=>matEtichetta(a.m).localeCompare(matEtichetta(b.m)));
+}
+function condividiDaOrdinare(){
+  const list=materialiDaOrdinare();
+  if(!list.length){ alert('Nessun materiale da ordinare.'); return; }
+  const t='LISTA MATERIALE DA ORDINARE\n\n'+list.map(o=>`• ${matEtichetta(o.m)} — ${o.qty} ${o.m.unita} (in magazzino: ${o.m.scorta||0})`).join('\n');
+  chiediAClaude(t,{});
+}
 
 
 
@@ -1306,29 +1320,85 @@ function ripristinaElenco(){
 }
 /* ── MAGAZZINO: catalogo materiali iniziale ── */
 const MATERIALI_INIZIALI=[
- {id:'mi_cavo_fg_3x25',nome:'Cavo FG16OR16 3x2,5',unita:'m',fornitore:''},
- {id:'mi_cavo_fg_5x6',nome:'Cavo FG16OR16 5x6',unita:'m',fornitore:''},
- {id:'mi_cavo_fror_2x15',nome:'Cavo FROR 2x1,5',unita:'m',fornitore:''},
- {id:'mi_cavo_n07_15',nome:'Cavo N07V-K 1,5',unita:'m',fornitore:''},
- {id:'mi_cavo_n07_25',nome:'Cavo N07V-K 2,5',unita:'m',fornitore:''},
- {id:'mi_tubo_20',nome:'Tubo corrugato \u00d820',unita:'m',fornitore:''},
- {id:'mi_tubo_25',nome:'Tubo corrugato \u00d825',unita:'m',fornitore:''},
- {id:'mi_canalina_60x40',nome:'Canalina 60x40',unita:'m',fornitore:''},
- {id:'mi_scatola_503',nome:'Scatola incasso 503',unita:'pz',fornitore:''},
- {id:'mi_scatola_der',nome:'Scatola derivazione',unita:'pz',fornitore:''},
- {id:'mi_magnetotermico_16',nome:'Magnetotermico 1P+N 16A',unita:'pz',fornitore:''},
- {id:'mi_differenziale_25',nome:'Differenziale 25A 30mA',unita:'pz',fornitore:''},
- {id:'mi_presa_16',nome:'Presa 2P+T 16A',unita:'pz',fornitore:''},
- {id:'mi_interruttore',nome:'Interruttore (frutto)',unita:'pz',fornitore:''},
- {id:'mi_placca_3',nome:'Placca 3 moduli',unita:'pz',fornitore:''},
- {id:'mi_quadro_12',nome:'Quadro 12 moduli',unita:'pz',fornitore:''},
- {id:'mi_morsetti',nome:'Morsetti',unita:'pz',fornitore:''},
- {id:'mi_faretto_led',nome:'Faretto LED',unita:'pz',fornitore:''},
- {id:'mi_plafoniera_led',nome:'Plafoniera LED',unita:'pz',fornitore:''},
- {id:'mi_cavo_lan6',nome:'Cavo LAN cat.6',unita:'m',fornitore:''},
- {id:'mi_rj45',nome:'Connettore RJ45',unita:'pz',fornitore:''},
- {id:'mi_tasselli',nome:'Tasselli',unita:'pz',fornitore:''},
- {id:'mi_staffe',nome:'Staffe',unita:'pz',fornitore:''}
+ {id:'mi_cavo_fg16or16_3g1_5',categoria:'Cavo',tipologia:'FG16OR16',variante:'3G1,5',unita:'m',scorta:0,fornitore:'',nome:'FG16OR16 3G1,5'},
+ {id:'mi_cavo_fg16or16_3g2_5',categoria:'Cavo',tipologia:'FG16OR16',variante:'3G2,5',unita:'m',scorta:0,fornitore:'',nome:'FG16OR16 3G2,5'},
+ {id:'mi_cavo_fg16or16_3g4',categoria:'Cavo',tipologia:'FG16OR16',variante:'3G4',unita:'m',scorta:0,fornitore:'',nome:'FG16OR16 3G4'},
+ {id:'mi_cavo_fg16or16_5g2_5',categoria:'Cavo',tipologia:'FG16OR16',variante:'5G2,5',unita:'m',scorta:0,fornitore:'',nome:'FG16OR16 5G2,5'},
+ {id:'mi_cavo_fg16or16_5g6',categoria:'Cavo',tipologia:'FG16OR16',variante:'5G6',unita:'m',scorta:0,fornitore:'',nome:'FG16OR16 5G6'},
+ {id:'mi_cavo_fg16or16_5g10',categoria:'Cavo',tipologia:'FG16OR16',variante:'5G10',unita:'m',scorta:0,fornitore:'',nome:'FG16OR16 5G10'},
+ {id:'mi_cavo_fror_2x1_5',categoria:'Cavo',tipologia:'FROR',variante:'2x1,5',unita:'m',scorta:0,fornitore:'',nome:'FROR 2x1,5'},
+ {id:'mi_cavo_fror_3x1_5',categoria:'Cavo',tipologia:'FROR',variante:'3x1,5',unita:'m',scorta:0,fornitore:'',nome:'FROR 3x1,5'},
+ {id:'mi_cavo_fror_3x2_5',categoria:'Cavo',tipologia:'FROR',variante:'3x2,5',unita:'m',scorta:0,fornitore:'',nome:'FROR 3x2,5'},
+ {id:'mi_cavo_fror_4x2_5',categoria:'Cavo',tipologia:'FROR',variante:'4x2,5',unita:'m',scorta:0,fornitore:'',nome:'FROR 4x2,5'},
+ {id:'mi_cavo_n07v_k_1_5',categoria:'Cavo',tipologia:'N07V-K',variante:'1,5',unita:'m',scorta:0,fornitore:'',nome:'N07V-K 1,5'},
+ {id:'mi_cavo_n07v_k_2_5',categoria:'Cavo',tipologia:'N07V-K',variante:'2,5',unita:'m',scorta:0,fornitore:'',nome:'N07V-K 2,5'},
+ {id:'mi_cavo_n07v_k_4',categoria:'Cavo',tipologia:'N07V-K',variante:'4',unita:'m',scorta:0,fornitore:'',nome:'N07V-K 4'},
+ {id:'mi_cavo_n07v_k_6',categoria:'Cavo',tipologia:'N07V-K',variante:'6',unita:'m',scorta:0,fornitore:'',nome:'N07V-K 6'},
+ {id:'mi_cavo_n07v_k_10',categoria:'Cavo',tipologia:'N07V-K',variante:'10',unita:'m',scorta:0,fornitore:'',nome:'N07V-K 10'},
+ {id:'mi_cavo_n07v_k_16',categoria:'Cavo',tipologia:'N07V-K',variante:'16',unita:'m',scorta:0,fornitore:'',nome:'N07V-K 16'},
+ {id:'mi_tubo_corrugato_d16',categoria:'Tubo',tipologia:'Corrugato',variante:'\u00d816',unita:'m',scorta:0,fornitore:'',nome:'Corrugato \u00d816'},
+ {id:'mi_tubo_corrugato_d20',categoria:'Tubo',tipologia:'Corrugato',variante:'\u00d820',unita:'m',scorta:0,fornitore:'',nome:'Corrugato \u00d820'},
+ {id:'mi_tubo_corrugato_d25',categoria:'Tubo',tipologia:'Corrugato',variante:'\u00d825',unita:'m',scorta:0,fornitore:'',nome:'Corrugato \u00d825'},
+ {id:'mi_tubo_corrugato_d32',categoria:'Tubo',tipologia:'Corrugato',variante:'\u00d832',unita:'m',scorta:0,fornitore:'',nome:'Corrugato \u00d832'},
+ {id:'mi_tubo_rigido_d20',categoria:'Tubo',tipologia:'Rigido',variante:'\u00d820',unita:'m',scorta:0,fornitore:'',nome:'Rigido \u00d820'},
+ {id:'mi_tubo_rigido_d25',categoria:'Tubo',tipologia:'Rigido',variante:'\u00d825',unita:'m',scorta:0,fornitore:'',nome:'Rigido \u00d825'},
+ {id:'mi_tubo_rigido_d32',categoria:'Tubo',tipologia:'Rigido',variante:'\u00d832',unita:'m',scorta:0,fornitore:'',nome:'Rigido \u00d832'},
+ {id:'mi_canalina_pvc_40x40',categoria:'Canalina',tipologia:'PVC',variante:'40x40',unita:'m',scorta:0,fornitore:'',nome:'PVC 40x40'},
+ {id:'mi_canalina_pvc_60x40',categoria:'Canalina',tipologia:'PVC',variante:'60x40',unita:'m',scorta:0,fornitore:'',nome:'PVC 60x40'},
+ {id:'mi_canalina_pvc_100x60',categoria:'Canalina',tipologia:'PVC',variante:'100x60',unita:'m',scorta:0,fornitore:'',nome:'PVC 100x60'},
+ {id:'mi_canalina_metallica_100x75',categoria:'Canalina',tipologia:'Metallica',variante:'100x75',unita:'m',scorta:0,fornitore:'',nome:'Metallica 100x75'},
+ {id:'mi_canalina_metallica_200x75',categoria:'Canalina',tipologia:'Metallica',variante:'200x75',unita:'m',scorta:0,fornitore:'',nome:'Metallica 200x75'},
+ {id:'mi_scatola_incasso_503',categoria:'Scatola',tipologia:'Incasso',variante:'503',unita:'pz',scorta:0,fornitore:'',nome:'Incasso 503'},
+ {id:'mi_scatola_incasso_504',categoria:'Scatola',tipologia:'Incasso',variante:'504',unita:'pz',scorta:0,fornitore:'',nome:'Incasso 504'},
+ {id:'mi_scatola_incasso_506',categoria:'Scatola',tipologia:'Incasso',variante:'506',unita:'pz',scorta:0,fornitore:'',nome:'Incasso 506'},
+ {id:'mi_scatola_incasso_392x152',categoria:'Scatola',tipologia:'Incasso',variante:'392x152',unita:'pz',scorta:0,fornitore:'',nome:'Incasso 392x152'},
+ {id:'mi_scatola_derivazione_100x100',categoria:'Scatola',tipologia:'Derivazione',variante:'100x100',unita:'pz',scorta:0,fornitore:'',nome:'Derivazione 100x100'},
+ {id:'mi_scatola_derivazione_150x110',categoria:'Scatola',tipologia:'Derivazione',variante:'150x110',unita:'pz',scorta:0,fornitore:'',nome:'Derivazione 150x110'},
+ {id:'mi_scatola_derivazione_200x150',categoria:'Scatola',tipologia:'Derivazione',variante:'200x150',unita:'pz',scorta:0,fornitore:'',nome:'Derivazione 200x150'},
+ {id:'mi_presa_civile_2p_t_16a',categoria:'Presa',tipologia:'Civile',variante:'2P+T 16A',unita:'pz',scorta:0,fornitore:'',nome:'Civile 2P+T 16A'},
+ {id:'mi_presa_civile_2p_t_10a',categoria:'Presa',tipologia:'Civile',variante:'2P+T 10A',unita:'pz',scorta:0,fornitore:'',nome:'Civile 2P+T 10A'},
+ {id:'mi_presa_civile_usb',categoria:'Presa',tipologia:'Civile',variante:'USB',unita:'pz',scorta:0,fornitore:'',nome:'Civile USB'},
+ {id:'mi_presa_cee_16a_3p',categoria:'Presa',tipologia:'CEE',variante:'16A 3P',unita:'pz',scorta:0,fornitore:'',nome:'CEE 16A 3P'},
+ {id:'mi_presa_cee_16a_3p_t',categoria:'Presa',tipologia:'CEE',variante:'16A 3P+T',unita:'pz',scorta:0,fornitore:'',nome:'CEE 16A 3P+T'},
+ {id:'mi_presa_cee_32a_3p_t',categoria:'Presa',tipologia:'CEE',variante:'32A 3P+T',unita:'pz',scorta:0,fornitore:'',nome:'CEE 32A 3P+T'},
+ {id:'mi_comando_frutto_interruttore',categoria:'Comando',tipologia:'Frutto',variante:'Interruttore',unita:'pz',scorta:0,fornitore:'',nome:'Frutto Interruttore'},
+ {id:'mi_comando_frutto_deviatore',categoria:'Comando',tipologia:'Frutto',variante:'Deviatore',unita:'pz',scorta:0,fornitore:'',nome:'Frutto Deviatore'},
+ {id:'mi_comando_frutto_invertitore',categoria:'Comando',tipologia:'Frutto',variante:'Invertitore',unita:'pz',scorta:0,fornitore:'',nome:'Frutto Invertitore'},
+ {id:'mi_comando_frutto_pulsante',categoria:'Comando',tipologia:'Frutto',variante:'Pulsante',unita:'pz',scorta:0,fornitore:'',nome:'Frutto Pulsante'},
+ {id:'mi_protezione_magnetotermico_1p_n_10a',categoria:'Protezione',tipologia:'Magnetotermico',variante:'1P+N 10A',unita:'pz',scorta:0,fornitore:'',nome:'Magnetotermico 1P+N 10A'},
+ {id:'mi_protezione_magnetotermico_1p_n_16a',categoria:'Protezione',tipologia:'Magnetotermico',variante:'1P+N 16A',unita:'pz',scorta:0,fornitore:'',nome:'Magnetotermico 1P+N 16A'},
+ {id:'mi_protezione_magnetotermico_1p_n_25a',categoria:'Protezione',tipologia:'Magnetotermico',variante:'1P+N 25A',unita:'pz',scorta:0,fornitore:'',nome:'Magnetotermico 1P+N 25A'},
+ {id:'mi_protezione_magnetotermico_4p_25a',categoria:'Protezione',tipologia:'Magnetotermico',variante:'4P 25A',unita:'pz',scorta:0,fornitore:'',nome:'Magnetotermico 4P 25A'},
+ {id:'mi_protezione_differenziale_1p_n_25a_30ma',categoria:'Protezione',tipologia:'Differenziale',variante:'1P+N 25A 30mA',unita:'pz',scorta:0,fornitore:'',nome:'Differenziale 1P+N 25A 30mA'},
+ {id:'mi_protezione_differenziale_4p_25a_30ma',categoria:'Protezione',tipologia:'Differenziale',variante:'4P 25A 30mA',unita:'pz',scorta:0,fornitore:'',nome:'Differenziale 4P 25A 30mA'},
+ {id:'mi_protezione_differenziale_1p_n_40a_30ma',categoria:'Protezione',tipologia:'Differenziale',variante:'1P+N 40A 30mA',unita:'pz',scorta:0,fornitore:'',nome:'Differenziale 1P+N 40A 30mA'},
+ {id:'mi_protezione_magnetotermico_diff_1p_n_16a_30ma',categoria:'Protezione',tipologia:'Magnetotermico+Diff',variante:'1P+N 16A 30mA',unita:'pz',scorta:0,fornitore:'',nome:'Magnetotermico+Diff 1P+N 16A 30mA'},
+ {id:'mi_protezione_magnetotermico_diff_1p_n_25a_30ma',categoria:'Protezione',tipologia:'Magnetotermico+Diff',variante:'1P+N 25A 30mA',unita:'pz',scorta:0,fornitore:'',nome:'Magnetotermico+Diff 1P+N 25A 30mA'},
+ {id:'mi_quadro_da_incasso_12_moduli',categoria:'Quadro',tipologia:'Da incasso',variante:'12 moduli',unita:'pz',scorta:0,fornitore:'',nome:'Da incasso 12 moduli'},
+ {id:'mi_quadro_da_incasso_24_moduli',categoria:'Quadro',tipologia:'Da incasso',variante:'24 moduli',unita:'pz',scorta:0,fornitore:'',nome:'Da incasso 24 moduli'},
+ {id:'mi_quadro_da_incasso_36_moduli',categoria:'Quadro',tipologia:'Da incasso',variante:'36 moduli',unita:'pz',scorta:0,fornitore:'',nome:'Da incasso 36 moduli'},
+ {id:'mi_quadro_da_parete_12_moduli',categoria:'Quadro',tipologia:'Da parete',variante:'12 moduli',unita:'pz',scorta:0,fornitore:'',nome:'Da parete 12 moduli'},
+ {id:'mi_quadro_da_parete_24_moduli',categoria:'Quadro',tipologia:'Da parete',variante:'24 moduli',unita:'pz',scorta:0,fornitore:'',nome:'Da parete 24 moduli'},
+ {id:'mi_illuminazione_faretto_led_7w',categoria:'Illuminazione',tipologia:'Faretto LED',variante:'7W',unita:'pz',scorta:0,fornitore:'',nome:'Faretto LED 7W'},
+ {id:'mi_illuminazione_faretto_led_10w',categoria:'Illuminazione',tipologia:'Faretto LED',variante:'10W',unita:'pz',scorta:0,fornitore:'',nome:'Faretto LED 10W'},
+ {id:'mi_illuminazione_faretto_led_20w',categoria:'Illuminazione',tipologia:'Faretto LED',variante:'20W',unita:'pz',scorta:0,fornitore:'',nome:'Faretto LED 20W'},
+ {id:'mi_illuminazione_plafoniera_led_18w',categoria:'Illuminazione',tipologia:'Plafoniera LED',variante:'18W',unita:'pz',scorta:0,fornitore:'',nome:'Plafoniera LED 18W'},
+ {id:'mi_illuminazione_plafoniera_led_36w',categoria:'Illuminazione',tipologia:'Plafoniera LED',variante:'36W',unita:'pz',scorta:0,fornitore:'',nome:'Plafoniera LED 36W'},
+ {id:'mi_illuminazione_plafoniera_led_48w',categoria:'Illuminazione',tipologia:'Plafoniera LED',variante:'48W',unita:'pz',scorta:0,fornitore:'',nome:'Plafoniera LED 48W'},
+ {id:'mi_illuminazione_proiettore_led_30w',categoria:'Illuminazione',tipologia:'Proiettore LED',variante:'30W',unita:'pz',scorta:0,fornitore:'',nome:'Proiettore LED 30W'},
+ {id:'mi_illuminazione_proiettore_led_50w',categoria:'Illuminazione',tipologia:'Proiettore LED',variante:'50W',unita:'pz',scorta:0,fornitore:'',nome:'Proiettore LED 50W'},
+ {id:'mi_illuminazione_proiettore_led_100w',categoria:'Illuminazione',tipologia:'Proiettore LED',variante:'100W',unita:'pz',scorta:0,fornitore:'',nome:'Proiettore LED 100W'},
+ {id:'mi_dati_cavo_lan_cat_6',categoria:'Dati',tipologia:'Cavo LAN',variante:'cat.6',unita:'m',scorta:0,fornitore:'',nome:'Cavo LAN cat.6'},
+ {id:'mi_dati_cavo_lan_cat_6a',categoria:'Dati',tipologia:'Cavo LAN',variante:'cat.6A',unita:'m',scorta:0,fornitore:'',nome:'Cavo LAN cat.6A'},
+ {id:'mi_dati_connettore_rj45_cat_6',categoria:'Dati',tipologia:'Connettore',variante:'RJ45 cat.6',unita:'pz',scorta:0,fornitore:'',nome:'Connettore RJ45 cat.6'},
+ {id:'mi_dati_connettore_rj45_cat_6a',categoria:'Dati',tipologia:'Connettore',variante:'RJ45 cat.6A',unita:'pz',scorta:0,fornitore:'',nome:'Connettore RJ45 cat.6A'},
+ {id:'mi_dati_patch_cat_6_1m',categoria:'Dati',tipologia:'Patch',variante:'cat.6 1m',unita:'pz',scorta:0,fornitore:'',nome:'Patch cat.6 1m'},
+ {id:'mi_dati_patch_cat_6_2m',categoria:'Dati',tipologia:'Patch',variante:'cat.6 2m',unita:'pz',scorta:0,fornitore:'',nome:'Patch cat.6 2m'},
+ {id:'mi_fissaggio_vario_tasselli',categoria:'Fissaggio',tipologia:'Vario',variante:'Tasselli',unita:'pz',scorta:0,fornitore:'',nome:'Vario Tasselli'},
+ {id:'mi_fissaggio_vario_staffe',categoria:'Fissaggio',tipologia:'Vario',variante:'Staffe',unita:'pz',scorta:0,fornitore:'',nome:'Vario Staffe'},
+ {id:'mi_fissaggio_vario_morsetti',categoria:'Fissaggio',tipologia:'Vario',variante:'Morsetti',unita:'pz',scorta:0,fornitore:'',nome:'Vario Morsetti'},
+ {id:'mi_fissaggio_vario_fascette',categoria:'Fissaggio',tipologia:'Vario',variante:'Fascette',unita:'pz',scorta:0,fornitore:'',nome:'Vario Fascette'},
+ {id:'mi_fissaggio_vario_collari',categoria:'Fissaggio',tipologia:'Vario',variante:'Collari',unita:'pz',scorta:0,fornitore:'',nome:'Vario Collari'}
 ];
 function caricaMateriali(){
   if(typeof closeHdrMenu==='function') closeHdrMenu();
@@ -2599,21 +2669,29 @@ function renderRisorse(){
       </div>`;
     });
   }
-  // MATERIALI
-  html+=`<div class="section-hdr" style="margin-top:4px">Materiali (${state.materiali.length})<button class="ico-btn" onclick="openModalMateriale()">＋</button></div>`;
+  // MATERIALI / MAGAZZINO
+  html+=`<div class="section-hdr" style="margin-top:4px">Magazzino (${state.materiali.length})<button class="ico-btn" onclick="openModalMateriale()">＋</button></div>`;
+  const daOrd=materialiDaOrdinare();
+  if(daOrd.length){
+    html+=`<div style="background:rgba(245,158,11,.10);border:1px solid rgba(245,158,11,.35);border-radius:12px;padding:10px 12px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-weight:700;color:#f59e0b;font-size:13px">🛒 Da ordinare (${daOrd.length})</span>
+      <button onclick="condividiDaOrdinare()" style="margin-left:auto;padding:6px 10px;border:none;border-radius:8px;background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-size:12px;font-family:inherit">📤 Invia a Claude</button></div>
+      ${daOrd.map(o=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-top:1px solid rgba(245,158,11,.15)"><span>${esc(matEtichetta(o.m))}</span><span style="font-family:var(--mono);color:#f59e0b;font-weight:600">${o.qty} ${o.m.unita}</span></div>`).join('')}
+    </div>`;
+  }
   if(!state.materiali.length){
-    html+=`<div style="padding:12px 14px 20px;font-size:12px;color:var(--text3)">Nessun materiale. Aggiungi con ＋</div>`;
+    html+=`<div style="padding:12px 14px 20px;font-size:12px;color:var(--text3)">Magazzino vuoto. Aggiungi con ＋ o ⋮ → 📦 Carica materiali</div>`;
   } else {
     state.materiali.forEach(m=>{
-      const col=CAT_COLORS[m.categoria]||'#64748b';
-      // count usage
+      const col=CAT_COLORS[m.categoria]||'#4f9cf9';
       let usageCount=0;
       state.commesse.forEach(c=>(c.fasi||[]).forEach(f=>{if((f.materiali||[]).find(x=>x.id===m.id))usageCount++;}));
+      const sc=m.scorta||0;
       html+=`<div class="anag-card" onclick="showMaterialeDetail('${m.id}')">
         <div class="anag-av" style="background:${col}22;color:${col};font-size:18px">📦</div>
         <div>
-          <div class="anag-nome">${m.nome}</div>
-          <div class="anag-sub">${m.categoria} · ${m.unita}${m.fornitore?' · '+m.fornitore:''}${m.codice?` <span style="font-family:var(--mono);color:var(--text3)">[${m.codice}]</span>`:''}</div>
+          <div class="anag-nome">${esc(matEtichetta(m))}</div>
+          <div class="anag-sub">scorta: <b style="color:${sc>0?'#22c55e':'var(--text3)'}">${sc} ${m.unita}</b>${m.fornitore?' · '+m.fornitore:''}</div>
         </div>
         <div class="anag-badge"><span class="badge" style="background:var(--border)22;color:var(--text3)">${usageCount} fasi</span></div>
       </div>`;
@@ -2657,10 +2735,18 @@ function showMaterialeDetail(id){
   const usages=[];
   state.commesse.forEach(c=>(c.fasi||[]).forEach(f=>{const u=(f.materiali||[]).find(x=>x.id===id);if(u)usages.push({...u,fase:f,commessa:c});}));
   const totQty=usages.reduce((s,u)=>s+(parseFloat(u.qty)||0),0);
+  const daOrd=usages.filter(u=>u.stato==='ordinare').reduce((s,u)=>s+(parseFloat(u.qty)||0),0);
   document.getElementById('sa-title').textContent=m.nome;
-  let html=`<div class="sf-g"><div style="font-size:14px;font-weight:600;margin-bottom:4px">${m.nome}</div>
-    <div style="font-size:12px;color:var(--text2)">${m.categoria} · ${m.unita}${m.fornitore?' · Fornitore: '+m.fornitore:''}${m.codice?` · <span style="font-family:var(--mono);color:var(--accent)">${m.codice}</span>`:''}</div>
+  let html=`<div class="sf-g"><div style="font-size:14px;font-weight:600;margin-bottom:4px">${esc(matEtichetta(m))}</div>
+    <div style="font-size:12px;color:var(--text2)">${m.unita}${m.fornitore?' · Fornitore: '+m.fornitore:''}${m.codice?` · <span style="font-family:var(--mono);color:var(--accent)">${m.codice}</span>`:''}</div>
     ${m.note?`<div style="font-size:12px;color:var(--text3);margin-top:4px">${m.note}</div>`:''}
+  </div>`;
+  html+=`<div class="sf-g"><div class="sf-lbl">Scorta in magazzino</div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="font-family:var(--mono);font-size:22px;font-weight:700;color:${(m.scorta||0)>0?'#22c55e':'var(--text3)'}">${m.scorta||0} <span style="font-size:13px;color:var(--text3)">${m.unita}</span></div>
+      <button onclick="setScorta('${id}')" style="margin-left:auto;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-size:13px;font-family:inherit">✎ Aggiorna scorta</button>
+    </div>
+    ${daOrd>0?`<div style="margin-top:8px;font-size:12px;color:#f59e0b;font-weight:600">🛒 Da ordinare nei lavori: ${daOrd} ${m.unita}</div>`:''}
   </div>`;
   if(totQty)html+=`<div class="sf-g"><div class="sf-lbl">Totale impiegato</div><div style="font-family:var(--mono);font-size:18px;font-weight:600;color:var(--accent)">${totQty} ${m.unita}</div></div>`;
   if(usages.length){
@@ -3064,7 +3150,7 @@ function selectFase(cid,fid){
   document.getElementById('sh-title').textContent=f.nome;
   const dur=f.inizio&&f.fine?diffDays(parseDate(f.inizio),parseDate(f.fine))+1:0;
   const tecnici=(f.tecnici||[]).map(tid=>{const t=getTecnico(tid);return t?`<span class="chip" style="color:#4f9cf9;border-color:#4f9cf940">${t.nome}</span>`:null;}).filter(Boolean).join(' ')||'—';
-  const materiali=(f.materiali||[]).map(({id,qty})=>{const m=getMateriale(id);return m?`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:12px"><span>${m.nome}</span><span style="font-family:var(--mono);color:var(--accent)">${qty} ${m.unita}</span></div>`:null;}).filter(Boolean).join('')||'<div style="font-size:12px;color:var(--text3)">Nessun materiale</div>';
+  const materiali=(f.materiali||[]).map(({id,qty,marca,serie,stato})=>{const m=getMateriale(id);if(!m)return null;const ord=stato==='ordinare';const extra=[marca&&('Marca: '+esc(marca)),serie&&('S/N: '+esc(serie))].filter(Boolean).join(' · ');return`<div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px"><div style="display:flex;justify-content:space-between;align-items:center"><span>${ord?'🛒 ':'✅ '}${esc(matEtichetta(m))}</span><span style="font-family:var(--mono);color:var(--accent)">${qty} ${m.unita}</span></div>${extra?`<div style="font-size:10px;color:var(--text3);margin-top:2px">${extra}</div>`:''}</div>`;}).filter(Boolean).join('')||'<div style="font-size:12px;color:var(--text3)">Nessun materiale</div>';
 
   document.getElementById('sh-body').innerHTML=`
     <div class="sf-g"><div class="sf-lbl">Commessa</div><div style="display:flex;align-items:center;gap:6px"><span class="dot-sm" style="background:${c.colore}"></span><span>${c.nome}</span></div></div>
@@ -3166,45 +3252,124 @@ function toggleTecnicoSel(id,el){
   chk.classList.toggle('checked',state.faseTecniciSel.includes(id));
   chk.textContent=state.faseTecniciSel.includes(id)?'✓':'';
 }
-function buildMaterialiSel(){
-  const sel=document.getElementById('mf-mat-sel');
-  sel.innerHTML=`<option value="">— aggiungi materiale —</option><option value="__new__">➕ Nuovo materiale…</option>`;
-  state.materiali.forEach(m=>{
-    if(state.faseMaterialiSel.find(x=>x.id===m.id))return;
-    const opt=document.createElement('option');opt.value=m.id;opt.textContent=m.nome+' ('+m.unita+')';sel.appendChild(opt);
-  });
+// ── CATALOGO: helper a cascata ──
+function catCategorie(){ const s=[]; state.materiali.forEach(m=>{const c=m.categoria||'Varie'; if(!s.includes(c))s.push(c);}); return s; }
+function catTipologie(cat){ const s=[]; state.materiali.forEach(m=>{ if((m.categoria||'Varie')!==cat)return; const t=m.tipologia||m.nome||''; if(t&&!s.includes(t))s.push(t);}); return s; }
+function catVarianti(cat,tip){ return state.materiali.filter(m=>(m.categoria||'Varie')===cat && (m.tipologia||m.nome||'')===tip); }
+function matEtichetta(m){ if(!m)return''; return [m.categoria,m.tipologia,m.variante].filter(Boolean).join(' · ')||m.nome||'—'; }
+
+// ── PICKER a cascata per aggiungere materiale alla fase ──
+function openMatPicker(){
+  const cats=catCategorie();
+  const inner=`
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div><label style="font-size:11px;color:var(--text3)">Categoria</label>
+        <select id="mp-cat" onchange="mpFillTip()" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:10px;font-size:15px;font-family:inherit">
+          ${cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></div>
+      <div><label style="font-size:11px;color:var(--text3)">Tipologia</label>
+        <select id="mp-tip" onchange="mpFillVar()" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:10px;font-size:15px;font-family:inherit"></select></div>
+      <div><label style="font-size:11px;color:var(--text3)">Variante / misura</label>
+        <select id="mp-var" onchange="mpInfo()" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:10px;font-size:15px;font-family:inherit"></select></div>
+      <div id="mp-scorta" style="font-size:12px;color:var(--text3)"></div>
+      <div style="display:flex;gap:8px">
+        <div style="flex:1"><label style="font-size:11px;color:var(--text3)">Quantità</label>
+          <input type="number" id="mp-qta" min="0" value="1" oninput="mpDefaultStato()" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:10px;font-size:15px;font-family:inherit"></div>
+        <div style="width:70px"><label style="font-size:11px;color:var(--text3)">Unità</label>
+          <div id="mp-unit" style="padding:11px 0;font-size:15px;color:var(--text2)">—</div></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <div style="flex:1"><label style="font-size:11px;color:var(--text3)">Marca (opz.)</label>
+          <input type="text" id="mp-marca" placeholder="es. BTicino" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:10px;font-size:14px;font-family:inherit"></div>
+        <div style="flex:1"><label style="font-size:11px;color:var(--text3)">N° serie (opz.)</label>
+          <input type="text" id="mp-serie" placeholder="S/N" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:10px;font-size:14px;font-family:inherit"></div>
+      </div>
+      <div><label style="font-size:11px;color:var(--text3)">Stato</label>
+        <select id="mp-stato" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:10px;font-size:15px;font-family:inherit">
+          <option value="presente">✅ Presente in magazzino</option>
+          <option value="ordinare">🛒 Da ordinare</option></select></div>
+      <button onclick="matPickerAdd()" style="width:100%;padding:13px;border:none;border-radius:10px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;font-family:inherit;margin-top:4px">➕ Aggiungi alla fase</button>
+      <button onclick="nuovoArticoloCatalogo()" style="width:100%;padding:11px;border:none;border-radius:10px;background:transparent;color:var(--accent,#4f9cf9);font-size:13px;font-family:inherit">➕ Articolo non in elenco…</button>
+    </div>`;
+  document.body.appendChild(_bfOv('mat-pick-ov','📦 Aggiungi materiale',inner));
+  mpFillTip();
+}
+function mpFillTip(){
+  const cat=document.getElementById('mp-cat').value;
+  const ts=catTipologie(cat);
+  document.getElementById('mp-tip').innerHTML=ts.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
+  mpFillVar();
+}
+function mpFillVar(){
+  const cat=document.getElementById('mp-cat').value, tip=document.getElementById('mp-tip').value;
+  const vs=catVarianti(cat,tip);
+  document.getElementById('mp-var').innerHTML=vs.map(m=>`<option value="${m.id}">${esc(m.variante||m.nome)}</option>`).join('');
+  mpInfo();
+}
+function mpInfo(){
+  const m=getMateriale(document.getElementById('mp-var').value);
+  document.getElementById('mp-unit').textContent=m?m.unita:'—';
+  document.getElementById('mp-scorta').textContent=m?('In magazzino: '+(m.scorta||0)+' '+m.unita):'';
+  mpDefaultStato();
+}
+function mpDefaultStato(){
+  const m=getMateriale(document.getElementById('mp-var').value); if(!m)return;
+  const q=parseFloat(document.getElementById('mp-qta').value)||0;
+  document.getElementById('mp-stato').value=((m.scorta||0)>=q && q>0)?'presente':'ordinare';
+}
+function matPickerAdd(){
+  const id=document.getElementById('mp-var').value; if(!id)return;
+  const qty=parseFloat(document.getElementById('mp-qta').value)||0;
+  const marca=document.getElementById('mp-marca').value.trim();
+  const serie=document.getElementById('mp-serie').value.trim();
+  const stato=document.getElementById('mp-stato').value;
+  const ex=state.faseMaterialiSel.find(x=>x.id===id);
+  if(ex){ ex.qty=qty; ex.marca=marca; ex.serie=serie; ex.stato=stato; }
+  else state.faseMaterialiSel.push({id,qty,marca,serie,stato});
+  const ov=document.getElementById('mat-pick-ov'); if(ov) ov.remove();
+  renderMaterialiList();
+}
+function nuovoArticoloCatalogo(){
+  const cat=(prompt('Categoria (es. Cavo, Presa):',document.getElementById('mp-cat').value||'')||'').trim(); if(!cat)return;
+  const tip=(prompt('Tipologia (es. FG16OR16):')||'').trim();
+  const variante=(prompt('Variante / misura (es. 3G4):')||'').trim();
+  const unita=((prompt('Unità (m, pz, kg):','pz')||'pz').trim())||'pz';
+  const nome=[tip,variante].filter(Boolean).join(' ')||cat;
+  const nuovo={id:'m'+Date.now(),categoria:cat,tipologia:tip,variante,unita,scorta:0,fornitore:'',nome};
+  state.materiali.push(nuovo); save();
+  const ov=document.getElementById('mat-pick-ov'); if(ov) ov.remove();
+  openMatPicker();
+  document.getElementById('mp-cat').value=cat; mpFillTip();
+  document.getElementById('mp-tip').value=tip; mpFillVar();
+  document.getElementById('mp-var').value=nuovo.id; mpInfo();
 }
 function renderMaterialiList(){
   const el=document.getElementById('mf-materiali-list');
   if(!state.faseMaterialiSel.length){el.innerHTML='';return;}
-  el.innerHTML=`<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:4px 8px;margin-bottom:4px">`+
-  state.faseMaterialiSel.map(({id,qty})=>{
+  el.innerHTML=`<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:4px">`+
+  state.faseMaterialiSel.map(({id,qty,marca,serie,stato})=>{
     const m=getMateriale(id);if(!m)return'';
-    return`<div class="mat-row">
-      <span class="mat-nome">${m.nome}</span>
-      <input class="mat-qty" type="number" min="0" value="${qty}" onchange="updateMatQty('${id}',this.value)" placeholder="qty">
-      <span class="mat-unit">${m.unita}</span>
-      <span class="mat-del" onclick="removeMatFromFase('${id}')">×</span>
+    const sub=[]; if(marca)sub.push('Marca: '+esc(marca)); if(serie)sub.push('S/N: '+esc(serie)); sub.push('mag: '+(m.scorta||0)+' '+m.unita);
+    const ord=stato==='ordinare';
+    const badge=`<span onclick="toggleMatStato('${id}')" style="cursor:pointer;font-size:11px;font-weight:700;padding:3px 7px;border-radius:20px;${ord?'background:rgba(245,158,11,.18);color:#f59e0b':'background:rgba(34,197,94,.18);color:#22c55e'}">${ord?'🛒 da ordinare':'✅ presente'}</span>`;
+    return`<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:8px 10px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="flex:1;font-size:13px;font-weight:600">${esc(matEtichetta(m))}</div>
+        <input type="number" min="0" value="${qty}" onchange="updateMatQty('${id}',this.value)" style="width:64px;background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:8px;color:inherit;padding:6px;font-size:14px;text-align:right">
+        <span style="font-size:12px;color:var(--text3);width:24px">${m.unita}</span>
+        <span onclick="removeMatFromFase('${id}')" style="color:#ef4444;font-size:20px;cursor:pointer;padding:0 2px">×</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:5px">
+        ${badge}
+        <span style="font-size:11px;color:var(--text3);flex:1">${sub.join(' · ')}</span>
+        <span onclick="editMatExtra('${id}')" style="font-size:12px;color:var(--accent);cursor:pointer">✎ marca/serie</span>
+      </div>
     </div>`;
   }).join('')+`</div>`;
 }
-function addMaterialeToFase(){
-  const sel=document.getElementById('mf-mat-sel');
-  const id=sel.value;if(!id)return;
-  if(id==='__new__'){
-    const nome=(prompt('Nome del nuovo materiale (es: Cavo FG16 3x2.5):')||'').trim();
-    if(!nome){ sel.value=''; return; }
-    const unita=((prompt('Unità di misura (es: m, pz, kg):','pz')||'pz').trim())||'pz';
-    const nuovo={id:'m'+Date.now(),nome,unita,fornitore:''};
-    state.materiali.push(nuovo); save();
-    state.faseMaterialiSel.push({id:nuovo.id,qty:1});
-    buildMaterialiSel();renderMaterialiList(); sel.value=''; return;
-  }
-  state.faseMaterialiSel.push({id,qty:1});
-  buildMaterialiSel();renderMaterialiList();
-}
+function toggleMatStato(id){const it=state.faseMaterialiSel.find(x=>x.id===id);if(it){it.stato=(it.stato==='ordinare')?'presente':'ordinare';renderMaterialiList();}}
+function editMatExtra(id){const it=state.faseMaterialiSel.find(x=>x.id===id);if(!it)return;const marca=prompt('Marca (vuoto per togliere):',it.marca||'');if(marca!==null)it.marca=marca.trim();const serie=prompt('Numero di serie (vuoto per togliere):',it.serie||'');if(serie!==null)it.serie=serie.trim();renderMaterialiList();}
 function updateMatQty(id,val){const item=state.faseMaterialiSel.find(x=>x.id===id);if(item)item.qty=parseFloat(val)||0;}
-function removeMatFromFase(id){state.faseMaterialiSel=state.faseMaterialiSel.filter(x=>x.id!==id);buildMaterialiSel();renderMaterialiList();}
+function removeMatFromFase(id){state.faseMaterialiSel=state.faseMaterialiSel.filter(x=>x.id!==id);renderMaterialiList();}
 
 function openModalFase(cid){
   state.editingFaseCommessaId=cid;state.editingFaseId=null;
@@ -3214,7 +3379,7 @@ function openModalFase(cid){
   document.getElementById('mf-inizio').value=fmt(today());
   document.getElementById('mf-fine').value=fmt(addDays(today(),7));
   document.getElementById('mf-stato').value='pianificata';
-  buildTecniciList([]);buildMaterialiSel();renderMaterialiList();
+  buildTecniciList([]);renderMaterialiList();
   document.getElementById('modal-fase').classList.add('open');
 }
 function editFase(cid,fid){
@@ -3229,7 +3394,7 @@ function editFase(cid,fid){
   document.getElementById('mf-stato').value=f.stato||'pianificata';
   document.getElementById('mf-ditta').value=f.ditta||'';
   document.getElementById('mf-note').value=f.note||'';
-  buildTecniciList(state.faseTecniciSel);buildMaterialiSel();renderMaterialiList();
+  buildTecniciList(state.faseTecniciSel);renderMaterialiList();
   document.getElementById('modal-fase').classList.add('open');
 }
 function saveFase(){
@@ -3934,10 +4099,9 @@ function chiediAClaudeDaInput(){
 function registraRispostaClaude(){
   const ctx=state._aiCtx||{};
   const c=ctx.commessaId?(getCommessa(ctx.commessaId)||{}):null;
-  const dom=ctx.domanda?esc(ctx.domanda.slice(0,400))+(ctx.domanda.length>400?'…':''):'<i>(nessuna domanda recente registrata)</i>';
   const inner=`
-    <div style="font-size:12px;color:var(--text3);margin-bottom:4px">Domanda inviata${c?(' · '+esc(c.nome)):''}</div>
-    <div style="background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;padding:9px;font-size:13px;color:var(--text2);margin-bottom:12px;max-height:120px;overflow:auto">${dom}</div>
+    <div style="font-size:12px;font-weight:600;margin-bottom:4px">❓ Domanda${c?(' · '+esc(c.nome)):''}</div>
+    <textarea id="airisp-dom" placeholder="La domanda inviata a Claude (se manca, incollala qui)…" style="width:100%;box-sizing:border-box;min-height:70px;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:9px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:12px">${esc(ctx.domanda||'')}</textarea>
     <div style="font-size:12px;font-weight:600;margin-bottom:4px">📥 Incolla qui la risposta di Claude</div>
     <textarea id="airisp-txt" placeholder="Tieni premuto e incolla la risposta copiata dall'app Claude…" style="width:100%;box-sizing:border-box;min-height:160px;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:10px;font-size:15px;font-family:inherit;resize:vertical"></textarea>
     <button onclick="salvaRispostaClaude()" style="width:100%;margin-top:10px;padding:13px;border:none;border-radius:10px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;font-family:inherit">💾 Salva risposta in archivio</button>`;
@@ -3946,6 +4110,7 @@ function registraRispostaClaude(){
 function salvaRispostaClaude(){
   const ta=document.getElementById('airisp-txt'); const risp=(ta&&ta.value||'').trim();
   if(!risp){ alert('Incolla prima la risposta di Claude.'); return; }
+  const domEl=document.getElementById('airisp-dom'); const domanda=(domEl&&domEl.value||'').trim();
   const ctx=state._aiCtx||{};
   const t=(typeof currentTec==='function')?currentTec():null;
   state.aiRisposte=state.aiRisposte||[];
@@ -3953,7 +4118,7 @@ function salvaRispostaClaude(){
     id:'ai'+Date.now(), quando:Date.now(), data:fmt(today()),
     autore:ctx.autore||((t&&t.nome)||'—'), autoreId:ctx.autoreId||((t&&t.id)||null),
     commessaId:ctx.commessaId||null, faseId:ctx.faseId||null, briefingId:ctx.briefingId||null,
-    domanda:ctx.domanda||'', risposta:risp
+    domanda:domanda||ctx.domanda||'', risposta:risp
   });
   save();
   const ov=document.getElementById('airisp-ov'); if(ov) ov.remove();
@@ -5281,7 +5446,7 @@ function apriBriefingForm(bid,cid,fid){
     <div style="display:flex;gap:8px;margin-top:6px">
       <button onclick="salvaBriefingForm()" style="flex:2;padding:13px;border:none;border-radius:10px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;font-family:inherit">💾 Salva</button>
       <button onclick="controllaBriefingForm()" style="flex:2;padding:13px;border:none;border-radius:10px;background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-weight:700;font-size:15px;font-family:inherit">🤖 Controlla</button>
-      <button onclick="registraRispostaClaude()" title="Registra la risposta di Claude" style="flex:0 0 48px;padding:13px 0;border:none;border-radius:10px;background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-weight:700;font-size:17px;font-family:inherit">📥</button>
+      <button onclick="registraRispostaDaBriefing()" title="Registra la risposta di Claude" style="flex:0 0 48px;padding:13px 0;border:none;border-radius:10px;background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-weight:700;font-size:17px;font-family:inherit">📥</button>
     </div>
     ${bid?`<button onclick="eliminaBriefing('${bid}')" style="width:100%;margin-top:8px;padding:11px;border:none;border-radius:10px;background:transparent;color:#ef4444;font-size:13px;font-family:inherit">🗑 Elimina questo briefing</button>`:''}`;
   document.body.appendChild(_bfOv('brief-form-ov', bid?'📋 Modifica briefing':'📋 Nuovo briefing', inner));
@@ -5334,6 +5499,23 @@ function controllaBriefingForm(){
     `Cosa fare: ${d.cosa||'(vuoto)'}\nModifiche cliente: ${d.modifiche||'(vuoto)'}\nRiferimenti: ${d.riferimenti||'(vuoto)'}\nPunti aperti: ${d.aperti||'(vuoto)'}`;
   const ov=document.getElementById('brief-form-ov'); if(ov) ov.remove();
   chiediAClaude(prompt,{commessaId:e.commessaId,faseId:d.faseId,briefingId:e.id});
+}
+function registraRispostaDaBriefing(){
+  const e=window._bfEdit; if(!e) return;
+  const d=_bfReadForm();
+  if(e.id){ const b=state.briefings.find(x=>x.id===e.id); if(b) Object.assign(b,d); }
+  else { state.briefings=state.briefings||[]; const nb=Object.assign({id:'bf'+Date.now(),commessaId:e.commessaId,creato:Date.now()},d); state.briefings.push(nb); window._bfEdit.id=nb.id; }
+  const c=getCommessa(e.commessaId)||{nome:''};
+  const f=d.faseId?(((c.fasi||[]).find(x=>x.id===d.faseId)||{}).nome||''):'';
+  const dove=f?`fase "${f}" del lavoro "${c.nome}"`:`lavoro "${c.nome}"`;
+  const prompt=`Sei il coordinatore operativo. Controlla questo BRIEFING (${dove}, data ${d.data}) e dimmi in modo pratico e breve se il tecnico ha abbastanza per iniziare. Indica cosa manca e fai 2-3 domande mirate per ufficio/cliente.\n\n`+
+    `Presenti — Ufficio: ${_bfNomi(d.ufficio).join(', ')||'-'}; Tecnici: ${_bfNomi(d.tecnici).join(', ')||'-'}; Cliente: ${d.cliente||'-'}\n`+
+    `Cosa fare: ${d.cosa||'(vuoto)'}\nModifiche cliente: ${d.modifiche||'(vuoto)'}\nRiferimenti: ${d.riferimenti||'(vuoto)'}\nPunti aperti: ${d.aperti||'(vuoto)'}`;
+  const t=(typeof currentTec==='function')?currentTec():null;
+  state._aiCtx={autore:(t&&t.nome)||'—',autoreId:(t&&t.id)||null,commessaId:e.commessaId,faseId:d.faseId,briefingId:window._bfEdit.id,domanda:prompt,quando:Date.now()};
+  save();
+  const ov=document.getElementById('brief-form-ov'); if(ov) ov.remove();
+  registraRispostaClaude();
 }
 
 /* ── STAMPA REPORT PRESENZE DEL MESE (PDF, ufficio) ── */
