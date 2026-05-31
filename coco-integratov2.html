@@ -772,6 +772,7 @@ textarea{resize:vertical;min-height:60px;}
   <div class="hdr-menu-sep"></div>
   <button class="hdr-menu-item" onclick="hdrMenuGo('ai')"><span class="hmi-ico">🤖</span>Coordinatore AI</button>
   <button class="hdr-menu-item" onclick="closeHdrMenu();mostraRegistroPromemoria()"><span class="hmi-ico">🗒️</span>Registro messaggi</button>
+  <button class="hdr-menu-item" onclick="registroBriefing()"><span class="hmi-ico">📋</span>Registro briefing</button>
   <button class="hdr-menu-item" onclick="ripristinaElenco()"><span class="hmi-ico">👥</span>Carica elenco persone</button>
   <button class="hdr-menu-item" onclick="hdrMenuGo('backup')"><span class="hmi-ico">💾</span>Backup &amp; dati</button>
   <div class="hdr-menu-sep"></div>
@@ -1199,6 +1200,7 @@ let state={
   faseMaterialiSel:[],
   computoFilter:'tutti',
   promemoria:[],   // memoria operativa / promemoria vocali
+  briefings:[],    // verbali/briefing operativi (più voci per lavoro)
 };
 let aiHistory=[];
 
@@ -1226,6 +1228,7 @@ function save(){
   localStorage.setItem('st_az4',state.aziendaNome||'Co.Co.');
   localStorage.setItem('st_cm4',JSON.stringify(state.computi));
   localStorage.setItem('st_pm4',JSON.stringify(state.promemoria||[]));
+  localStorage.setItem('st_bf4',JSON.stringify(state.briefings||[]));
 }
 function load(){
   try{
@@ -1242,6 +1245,7 @@ function load(){
     const az=localStorage.getItem('st_az4');if(az)state.aziendaNome=az;
     const cm=localStorage.getItem('st_cm4');if(cm)state.computi=JSON.parse(cm);
     const pm=localStorage.getItem('st_pm4');if(pm)state.promemoria=JSON.parse(pm);
+    const bf=localStorage.getItem('st_bf4');if(bf)state.briefings=JSON.parse(bf);
     // migrate old
     if(!state.commesse.length){const oc=localStorage.getItem('sietel_commesse_v1')||localStorage.getItem('st_c3');if(oc){state.commesse=JSON.parse(oc);save();}}
   }catch(err){}
@@ -2451,6 +2455,7 @@ function renderCommesse(){
         <div class="c-prog"><div class="c-prog-fill" style="width:${pct}%;background:${c.colore}"></div></div>
       </div>
       <div class="c-acts" onclick="event.stopPropagation()">
+        <button class="ico-btn" onclick="apriBriefing('${c.id}')" title="Briefing operativo">📋</button>
         <button class="ico-btn" onclick="openModalFase('${c.id}')">＋</button>
         <button class="ico-btn" onclick="editCommessa('${c.id}')">✎</button>
       </div>
@@ -3023,7 +3028,8 @@ function selectFase(cid,fid){
     ${f.note?`<div class="sf-g"><div class="sf-lbl">Note</div><div style="font-size:13px;color:var(--text2)">${f.note}</div></div>`:''}
     <div class="sf-g"><div class="sf-lbl">Cambia stato</div><div class="stato-grid">${Object.entries(SL).map(([s,l])=>`<button class="stato-btn" onclick="setStatoFase('${cid}','${fid}','${s}')" style="color:${SC[s]};border-color:${SC[s]}40;background:${f.stato===s?SC[s]+'22':'transparent'}">${l}</button>`).join('')}</div></div>
     <div class="act-row">
-      <button class="btn-main" onclick="closeSheet('sheet-fase');editFase('${cid}','${fid}')">✎ Modifica</button>
+      <button class="btn-main" onclick="closeSheet('sheet-fase');apriBriefing('${cid}','${fid}')">📋 Briefing</button>
+      <button class="btn-sec" onclick="closeSheet('sheet-fase');editFase('${cid}','${fid}')">✎</button>
       <button class="btn-sec" onclick="closeSheet('sheet-fase');sendQuickAI('Analizza la fase \\"${f.nome}\\" commessa \\"${c.nome}\\"')">🤖</button>
       <button class="btn-danger" onclick="deleteFase('${cid}','${fid}')">🗑</button>
     </div>`;
@@ -5050,6 +5056,141 @@ function autoBriefSerale(){
     localStorage.setItem('brief_serale_done',oggi);
     setTimeout(briefingSerale,600);
   }
+}
+
+/* ── BRIEFING OPERATIVI / VERBALI (più voci per lavoro) ── */
+function _bfData(ds){ if(!ds) return ''; const d=parseDate(ds); return d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'2-digit'}); }
+function _bfNomi(ids){ return (ids||[]).map(id=>(getTecnico(id)||{}).nome).filter(Boolean); }
+function _bfPresenti(b){ const t=_bfNomi(b.tecnici),u=_bfNomi(b.ufficio),p=[]; if(u.length)p.push('Ufficio: '+u.join(', ')); if(t.length)p.push('Tecnici: '+t.join(', ')); if(b.cliente)p.push('Cliente: '+esc(b.cliente)); return p.join(' · ')||'—'; }
+function _bfOv(id,titolo,inner){
+  const ov=document.createElement('div'); ov.id=id;
+  ov.style.cssText='position:fixed;inset:0;z-index:320;background:rgba(0,0,0,.8);display:flex;align-items:flex-end;';
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  ov.innerHTML=`<div style="background:var(--surface,#141720);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom,0px));max-height:92vh;overflow-y:auto;color:var(--text,#fff);font-family:var(--sans,system-ui)">
+     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div style="flex:1;font-weight:600;font-size:15px">${titolo}</div>
+       <button onclick="document.getElementById('${id}').remove()" style="width:34px;height:34px;border-radius:8px;border:none;background:var(--surface2,#1c2030);color:#fff;font-size:20px">×</button></div>${inner}</div>`;
+  return ov;
+}
+// LISTA dei briefing di un lavoro (dal pulsante 📋)
+function apriBriefing(cid,fid){
+  const c=getCommessa(cid); if(!c) return;
+  const list=(state.briefings||[]).filter(b=>b.commessaId===cid).sort((a,b)=>(b.creato||0)-(a.creato||0));
+  let body;
+  if(!list.length){ body='<div class="empty-state" style="padding:24px 10px"><div class="empty-big">📋</div>Nessun briefing per questo lavoro.</div>'; }
+  else { body='<div class="card"><div class="inner-list">'+list.map(b=>{
+      const f=b.faseId?((c.fasi||[]).find(x=>x.id===b.faseId)||{}).nome:'';
+      return `<div class="row-item" onclick="document.getElementById('brief-list-ov').remove();apriBriefingForm('${b.id}')" style="align-items:flex-start">
+        <div class="ri" style="flex:1"><div class="ri-nome">📅 ${_bfData(b.data)}${f?(' · '+esc(f)):' · tutto il lavoro'}</div>
+        <div class="ri-meta" style="margin-top:2px">${_bfPresenti(b)}</div></div><span style="color:var(--text3)">›</span></div>`;
+    }).join('')+'</div></div>'; }
+  const head=`<button onclick="document.getElementById('brief-list-ov').remove();nuovoBriefing('${cid}','${fid||''}')" style="width:100%;padding:13px;border:none;border-radius:10px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;margin-bottom:12px">➕ Nuovo briefing</button>`;
+  document.body.appendChild(_bfOv('brief-list-ov','📋 Briefing — '+esc(c.nome),head+body));
+}
+function nuovoBriefing(cid,fid){ apriBriefingForm(null,cid,fid); }
+// REGISTRO globale di tutti i briefing
+function registroBriefing(){
+  if(typeof closeHdrMenu==='function') closeHdrMenu();
+  const list=(state.briefings||[]).slice().sort((a,b)=>(b.creato||0)-(a.creato||0));
+  let body;
+  if(!list.length){ body='<div class="empty-state" style="padding:24px 10px"><div class="empty-big">📋</div>Nessun briefing registrato.</div>'; }
+  else { body='<div class="card"><div class="inner-list">'+list.map(b=>{
+      const c=getCommessa(b.commessaId)||{nome:'(lavoro eliminato)'};
+      const f=b.faseId?(((c.fasi||[]).find(x=>x.id===b.faseId)||{}).nome||''):'';
+      return `<div class="row-item" onclick="document.getElementById('brief-reg-ov').remove();apriBriefingForm('${b.id}')" style="align-items:flex-start">
+        <div class="ri" style="flex:1"><div class="ri-nome">${esc(c.nome)}${f?(' › '+esc(f)):''}</div>
+        <div class="ri-meta" style="margin-top:2px">📅 ${_bfData(b.data)} · ${_bfPresenti(b)}</div></div><span style="color:var(--text3)">›</span></div>`;
+    }).join('')+'</div></div>'; }
+  document.body.appendChild(_bfOv('brief-reg-ov','📋 Registro briefing ('+list.length+')',body));
+}
+// FORM nuovo/modifica briefing
+function apriBriefingForm(bid,cid,fid){
+  let b;
+  if(bid){ b=(state.briefings||[]).find(x=>x.id===bid); if(!b) return; cid=b.commessaId; }
+  else { b={id:null,commessaId:cid,faseId:fid||null,data:fmt(today()),tecnici:[],ufficio:[],cliente:'',cosa:'',modifiche:'',riferimenti:'',aperti:''}; }
+  const c=getCommessa(cid); if(!c) return;
+  window._bfEdit={id:b.id,commessaId:cid};
+  const faseOpts='<option value="">— tutto il lavoro —</option>'+(c.fasi||[]).map(f=>`<option value="${f.id}"${b.faseId===f.id?' selected':''}>${esc(f.nome)}</option>`).join('');
+  const tecRoster=state.tecnici.filter(t=>!isUfficio(t));
+  const uffRoster=state.tecnici.filter(t=>isUfficio(t));
+  const chk=(t,grp,arr)=>`<label style="display:inline-flex;align-items:center;gap:5px;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:8px;padding:6px 9px;font-size:13px;margin:0 6px 6px 0"><input type="checkbox" value="${t.id}" data-bfgrp="${grp}" ${arr.includes(t.id)?'checked':''}>${esc(t.nome)}</label>`;
+  const campi=[
+    {k:'cosa',ico:'🛠️',lbl:'Cosa fare davvero'},
+    {k:'modifiche',ico:'🗣️',lbl:'Indicazioni / modifiche del cliente'},
+    {k:'riferimenti',ico:'📐',lbl:'Riferimenti (disegni, riunioni)'},
+    {k:'aperti',ico:'❓',lbl:'Punti aperti / da chiarire'}
+  ];
+  const campiHtml=campi.map(f=>`
+    <div style="margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="font-size:12px;color:var(--text2,#e8eaf2);font-weight:600">${f.ico} ${f.lbl}</span>
+      <button onclick="briefVoce('bf-${f.k}')" style="margin-left:auto;border:none;background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);border-radius:8px;padding:4px 9px;font-size:13px">🦉 voce</button></div>
+      <textarea id="bf-${f.k}" style="width:100%;box-sizing:border-box;min-height:54px;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:9px;font-size:15px;font-family:inherit;resize:vertical">${esc(b[f.k]||'')}</textarea>
+    </div>`).join('');
+  const inner=`
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <div style="flex:1"><label style="font-size:11px;color:var(--text3)">Data</label><input type="date" id="bf-data" value="${b.data||''}" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:9px;font-size:14px;font-family:inherit"></div>
+      <div style="flex:1"><label style="font-size:11px;color:var(--text3)">Fase</label><select id="bf-fase" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:9px;font-size:14px;font-family:inherit">${faseOpts}</select></div>
+    </div>
+    <div style="font-size:12px;font-weight:600;color:var(--text2);margin:6px 0 4px">👥 Presenti</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:3px">Ufficio</div><div>${uffRoster.map(t=>chk(t,'uff',b.ufficio)).join('')||'<span style="font-size:12px;color:var(--text3)">nessuno</span>'}</div>
+    <div style="font-size:11px;color:var(--text3);margin:6px 0 3px">Tecnici</div><div>${tecRoster.map(t=>chk(t,'tec',b.tecnici)).join('')||'<span style="font-size:12px;color:var(--text3)">nessuno</span>'}</div>
+    <div style="font-size:11px;color:var(--text3);margin:6px 0 3px">Cliente — nome incaricato</div>
+    <input type="text" id="bf-cliente" value="${esc(b.cliente||'')}" placeholder="Es: Ing. Rossi" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:9px;font-size:14px;font-family:inherit;margin-bottom:12px">
+    ${campiHtml}
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <button onclick="salvaBriefingForm()" style="flex:2;padding:13px;border:none;border-radius:10px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;font-family:inherit">💾 Salva</button>
+      <button onclick="controllaBriefingForm()" style="flex:2;padding:13px;border:none;border-radius:10px;background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-weight:700;font-size:15px;font-family:inherit">🤖 Controlla</button>
+    </div>
+    ${bid?`<button onclick="eliminaBriefing('${bid}')" style="width:100%;margin-top:8px;padding:11px;border:none;border-radius:10px;background:transparent;color:#ef4444;font-size:13px;font-family:inherit">🗑 Elimina questo briefing</button>`:''}`;
+  document.body.appendChild(_bfOv('brief-form-ov', bid?'📋 Modifica briefing':'📋 Nuovo briefing', inner));
+}
+function _bfReadForm(){
+  const g=k=>(document.getElementById('bf-'+k)||{}).value||'';
+  const grp=n=>Array.from(document.querySelectorAll('input[data-bfgrp="'+n+'"]:checked')).map(e=>e.value);
+  return {data:g('data'),faseId:g('fase')||null,cliente:g('cliente').trim(),tecnici:grp('tec'),ufficio:grp('uff'),
+    cosa:g('cosa').trim(),modifiche:g('modifiche').trim(),riferimenti:g('riferimenti').trim(),aperti:g('aperti').trim()};
+}
+function salvaBriefingForm(){
+  const e=window._bfEdit; if(!e) return;
+  const d=_bfReadForm();
+  if(e.id){ const b=state.briefings.find(x=>x.id===e.id); if(b) Object.assign(b,d); }
+  else { state.briefings=state.briefings||[]; state.briefings.push(Object.assign({id:'bf'+Date.now(),commessaId:e.commessaId,creato:Date.now()},d)); }
+  save();
+  const ov=document.getElementById('brief-form-ov'); if(ov) ov.remove();
+  if(typeof renderAll==='function') renderAll();
+}
+function eliminaBriefing(bid){
+  if(!confirm('Eliminare questo briefing dal registro?'))return;
+  state.briefings=(state.briefings||[]).filter(x=>x.id!==bid); save();
+  const ov=document.getElementById('brief-form-ov'); if(ov) ov.remove();
+  if(typeof renderAll==='function') renderAll();
+}
+function briefVoce(targetId){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  const ta=document.getElementById(targetId); if(!ta) return;
+  if(!SR){ alert('La dettatura non è disponibile così. Scrivi pure a mano.'); return; }
+  if(window._briefRec){try{window._briefRec.stop();}catch(e){} window._briefRec=null;}
+  const rec=new SR(); window._briefRec=rec; rec.lang='it-IT'; rec.interimResults=true; rec.continuous=false; rec.maxAlternatives=1;
+  const base=ta.value?ta.value.trim()+' ':'';
+  rec.onresult=e=>{ const r=e.results[e.results.length-1]; if(r&&r[0]) ta.value=base+r[0].transcript.replace(/\s+/g,' ').trim(); };
+  rec.onerror=()=>{ window._briefRec=null; };
+  rec.onend=()=>{ window._briefRec=null; };
+  try{ rec.start(); }catch(e){}
+}
+function controllaBriefingForm(){
+  const e=window._bfEdit; if(!e) return;
+  const d=_bfReadForm();
+  // salva prima
+  if(e.id){ const b=state.briefings.find(x=>x.id===e.id); if(b) Object.assign(b,d); }
+  else { state.briefings=state.briefings||[]; const nb=Object.assign({id:'bf'+Date.now(),commessaId:e.commessaId,creato:Date.now()},d); state.briefings.push(nb); window._bfEdit.id=nb.id; }
+  save();
+  const c=getCommessa(e.commessaId)||{nome:''};
+  const f=d.faseId?(((c.fasi||[]).find(x=>x.id===d.faseId)||{}).nome||''):'';
+  const dove=f?`fase "${f}" del lavoro "${c.nome}"`:`lavoro "${c.nome}"`;
+  const prompt=`Sei il coordinatore operativo. Controlla questo BRIEFING (${dove}, data ${d.data}) e dimmi in modo pratico e breve se il tecnico ha abbastanza per iniziare. Indica cosa manca e fai 2-3 domande mirate per ufficio/cliente.\n\n`+
+    `Presenti — Ufficio: ${_bfNomi(d.ufficio).join(', ')||'-'}; Tecnici: ${_bfNomi(d.tecnici).join(', ')||'-'}; Cliente: ${d.cliente||'-'}\n`+
+    `Cosa fare: ${d.cosa||'(vuoto)'}\nModifiche cliente: ${d.modifiche||'(vuoto)'}\nRiferimenti: ${d.riferimenti||'(vuoto)'}\nPunti aperti: ${d.aperti||'(vuoto)'}`;
+  const ov=document.getElementById('brief-form-ov'); if(ov) ov.remove();
+  if(typeof sendQuickAI==='function') sendQuickAI(prompt);
 }
 
 /* ── STAMPA REPORT PRESENZE DEL MESE (PDF, ufficio) ── */
