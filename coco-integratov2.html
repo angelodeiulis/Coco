@@ -3122,7 +3122,7 @@ function toggleTecnicoSel(id,el){
 }
 function buildMaterialiSel(){
   const sel=document.getElementById('mf-mat-sel');
-  sel.innerHTML=`<option value="">— aggiungi materiale —</option>`;
+  sel.innerHTML=`<option value="">— aggiungi materiale —</option><option value="__new__">➕ Nuovo materiale…</option>`;
   state.materiali.forEach(m=>{
     if(state.faseMaterialiSel.find(x=>x.id===m.id))return;
     const opt=document.createElement('option');opt.value=m.id;opt.textContent=m.nome+' ('+m.unita+')';sel.appendChild(opt);
@@ -3145,6 +3145,15 @@ function renderMaterialiList(){
 function addMaterialeToFase(){
   const sel=document.getElementById('mf-mat-sel');
   const id=sel.value;if(!id)return;
+  if(id==='__new__'){
+    const nome=(prompt('Nome del nuovo materiale (es: Cavo FG16 3x2.5):')||'').trim();
+    if(!nome){ sel.value=''; return; }
+    const unita=((prompt('Unità di misura (es: m, pz, kg):','pz')||'pz').trim())||'pz';
+    const nuovo={id:'m'+Date.now(),nome,unita,fornitore:''};
+    state.materiali.push(nuovo); save();
+    state.faseMaterialiSel.push({id:nuovo.id,qty:1});
+    buildMaterialiSel();renderMaterialiList(); sel.value=''; return;
+  }
   state.faseMaterialiSel.push({id,qty:1});
   buildMaterialiSel();renderMaterialiList();
 }
