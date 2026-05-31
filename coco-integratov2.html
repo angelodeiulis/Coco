@@ -981,7 +981,7 @@ textarea{resize:vertical;min-height:60px;}
       </div>
       <div class="ff"><label>Note</label><textarea id="mc-note" placeholder="Dettagli..."></textarea></div>
     </div>
-    <div class="modal-footer"><button class="btn-save" onclick="saveCommessa()">Salva Commessa</button></div>
+    <div class="modal-footer" style="display:flex;flex-direction:column;gap:8px"><button class="btn-save" onclick="saveCommessa()">Salva Commessa</button><button id="mc-del" onclick="deleteCommessaCorrente()" style="display:none;width:100%;padding:12px;border:none;border-radius:10px;background:rgba(239,68,68,.12);color:#ef4444;font-weight:600;font-size:14px;font-family:inherit">🗑 Elimina lavoro</button></div>
   </div>
 </div>
 
@@ -1012,7 +1012,7 @@ textarea{resize:vertical;min-height:60px;}
       </div>
       <div class="ff"><label>Note</label><textarea id="mf-note" placeholder="Dettagli..."></textarea></div>
     </div>
-    <div class="modal-footer"><button class="btn-save" onclick="saveFase()">Salva Fase</button></div>
+    <div class="modal-footer" style="display:flex;flex-direction:column;gap:8px"><button class="btn-save" onclick="saveFase()">Salva Fase</button><button id="mf-del" onclick="deleteFaseCorrente()" style="display:none;width:100%;padding:12px;border:none;border-radius:10px;background:rgba(239,68,68,.12);color:#ef4444;font-weight:600;font-size:14px;font-family:inherit">🗑 Elimina fase</button></div>
   </div>
 </div>
 
@@ -3206,6 +3206,23 @@ function selectFase(cid,fid){
 function closeSheet(id){document.getElementById(id).classList.remove('open');}
 function setStatoFase(cid,fid,stato){const f=getFase(cid,fid);if(f){f.stato=stato;save();renderAll();selectFase(cid,fid);}}
 function deleteFase(cid,fid){if(!confirm('Eliminare questa fase?'))return;const c=getCommessa(cid);if(c){c.fasi=(c.fasi||[]).filter(x=>x.id!==fid);save();closeSheet('sheet-fase');renderAll();}}
+function deleteCommessa(id){const c=getCommessa(id);if(!c)return;state.commesse=state.commesse.filter(x=>x.id!==id);delete state.expanded[id];save();renderAll();}
+function deleteFaseCorrente(){
+  if(!isUfficio(currentTec())){alert('Solo l\u2019ufficio può eliminare le fasi.');return;}
+  const cid=state.editingFaseCommessaId, fid=state.editingFaseId; if(!fid)return;
+  const f=getFase(cid,fid); if(!f)return;
+  if(!confirm('Eliminare la fase "'+(f.nome||'')+'"?\n\nL\u2019operazione non si può annullare.'))return;
+  const c=getCommessa(cid); if(c)c.fasi=(c.fasi||[]).filter(x=>x.id!==fid);
+  save(); closeModal('modal-fase'); renderAll();
+}
+function deleteCommessaCorrente(){
+  if(!isUfficio(currentTec())){alert('Solo l\u2019ufficio può eliminare i lavori.');return;}
+  const id=state.editingCommessaId; const c=getCommessa(id); if(!c)return;
+  const nf=(c.fasi||[]).length;
+  if(!confirm('Eliminare l\u2019intero lavoro "'+(c.nome||'')+'"'+(nf?(' e le sue '+nf+' fasi'):'')+'?\n\nL\u2019operazione non si può annullare.'))return;
+  state.commesse=state.commesse.filter(x=>x.id!==id); delete state.expanded[id];
+  save(); closeModal('modal-commessa'); renderAll();
+}
 
 // ── CONFLICTS ──
 function getConflicts(){
@@ -3241,6 +3258,7 @@ function openModalCommessa(){
   document.getElementById('mc-priorita').value='media';
   document.getElementById('mc-inizio').value=fmt(today());
   document.getElementById('mc-fine').value=fmt(addDays(today(),30));
+  document.getElementById('mc-del').style.display='none';
   document.getElementById('modal-commessa').classList.add('open');
 }
 function editCommessa(id){
@@ -3253,6 +3271,7 @@ function editCommessa(id){
   document.getElementById('mc-inizio').value=c.inizio||'';
   document.getElementById('mc-fine').value=c.fine||'';
   document.getElementById('mc-note').value=c.note||'';
+  document.getElementById('mc-del').style.display=isUfficio(currentTec())?'block':'none';
   document.getElementById('modal-commessa').classList.add('open');
 }
 function saveCommessa(){
@@ -3410,6 +3429,7 @@ function openModalFase(cid){
   document.getElementById('mf-fine').value=fmt(addDays(today(),7));
   document.getElementById('mf-stato').value='pianificata';
   buildTecniciList([]);renderMaterialiList();
+  document.getElementById('mf-del').style.display='none';
   document.getElementById('modal-fase').classList.add('open');
 }
 function editFase(cid,fid){
@@ -3425,6 +3445,7 @@ function editFase(cid,fid){
   document.getElementById('mf-ditta').value=f.ditta||'';
   document.getElementById('mf-note').value=f.note||'';
   buildTecniciList(state.faseTecniciSel);renderMaterialiList();
+  document.getElementById('mf-del').style.display=isUfficio(currentTec())?'block':'none';
   document.getElementById('modal-fase').classList.add('open');
 }
 function saveFase(){
