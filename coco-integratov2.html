@@ -775,7 +775,7 @@ textarea{resize:vertical;min-height:60px;}
   <button class="hdr-menu-item" onclick="registroBriefing()"><span class="hmi-ico">📋</span>Registro briefing</button>
   <button class="hdr-menu-item" onclick="registroRisposteAI()"><span class="hmi-ico">🤖</span>Risposte AI</button>
   <button class="hdr-menu-item" onclick="ripristinaElenco()"><span class="hmi-ico">👥</span>Carica elenco persone</button>
-  <button class="hdr-menu-item" onclick="caricaMateriali()"><span class="hmi-ico">📦</span>Carica materiali</button>
+  <button class="hdr-menu-item" onclick="closeHdrMenu();apriMagazzino()"><span class="hmi-ico">🏬</span>Magazzino</button>
   <button class="hdr-menu-item" onclick="hdrMenuGo('backup')"><span class="hmi-ico">💾</span>Backup &amp; dati</button>
   <div class="hdr-menu-sep"></div>
   <button class="hdr-menu-item" onclick="closeHdrMenu();vaiAlCampo()"><span class="hmi-ico">📍</span>Modalità cantiere</button>
@@ -1263,20 +1263,56 @@ function getCommessa(id){return state.commesse.find(x=>x.id===id);}
 function getTecnico(id){return state.tecnici.find(x=>x.id===id);}
 function getMateriale(id){return state.materiali.find(x=>x.id===id);}
 function setScorta(id){const m=getMateriale(id);if(!m)return;const v=prompt('Scorta in magazzino ('+m.unita+'):',m.scorta||0);if(v===null)return;m.scorta=parseFloat(v)||0;save();if(typeof renderAll==='function')renderAll();if(typeof showMaterialeDetail==='function')showMaterialeDetail(id);}
-function materialiDaOrdinare(){
-  const agg={};
+function fabbisognoArticolo(id){
+  let tot=0; const righe=[];
   state.commesse.forEach(c=>(c.fasi||[]).forEach(f=>(f.materiali||[]).forEach(u=>{
-    if(u.stato!=='ordinare')return; const m=getMateriale(u.id); if(!m)return;
-    if(!agg[u.id])agg[u.id]={m,qty:0,fasi:[]};
-    agg[u.id].qty+=parseFloat(u.qty)||0; agg[u.id].fasi.push((c.nome||'')+(f.nome?(' › '+f.nome):''));
+    if(u.id!==id)return; tot+=parseFloat(u.qty)||0; righe.push({commessa:c,fase:f,u});
   })));
-  return Object.values(agg).sort((a,b)=>matEtichetta(a.m).localeCompare(matEtichetta(b.m)));
+  return {tot,righe};
+}
+function magInfo(m){ const {tot,righe}=fabbisognoArticolo(m.id); const sc=m.scorta||0; return {sc,tot,righe,impegnato:Math.min(sc,tot),disponibile:Math.max(0,sc-tot),manca:Math.max(0,tot-sc)}; }
+function articoloInOrdine(id){ const m=getMateriale(id); if(!m)return false; return magInfo(m).manca>0; }
+function materialiDaOrdinare(){
+  const res=[];
+  state.materiali.forEach(m=>{ const i=magInfo(m); if(i.manca>0) res.push({m,qty:i.manca,tot:i.tot,righe:i.righe}); });
+  return res.sort((a,b)=>matEtichetta(a.m).localeCompare(matEtichetta(b.m)));
 }
 function condividiDaOrdinare(){
   const list=materialiDaOrdinare();
   if(!list.length){ alert('Nessun materiale da ordinare.'); return; }
-  const t='LISTA MATERIALE DA ORDINARE\n\n'+list.map(o=>`• ${matEtichetta(o.m)} — ${o.qty} ${o.m.unita} (in magazzino: ${o.m.scorta||0})`).join('\n');
+  const t='LISTA MATERIALE DA ORDINARE\n\n'+list.map(o=>{
+    const chi=[...new Set(o.righe.map(r=>r.u.richiedente).filter(Boolean))].join(', ');
+    return `• ${matEtichetta(o.m)} — ${o.qty} ${o.m.unita} (magazzino: ${o.m.scorta||0})`+(chi?`\n   richiesto da: ${chi}`:'');
+  }).join('\n');
   chiediAClaude(t,{});
+}
+function apriMagazzino(tab){
+  tab=tab||'mag';
+  const arts=state.materiali.slice().sort((a,b)=>matEtichetta(a).localeCompare(matEtichetta(b)));
+  let magBody;
+  if(!arts.length){ magBody='<div class="empty-state" style="padding:20px 10px"><div class="empty-big">📦</div>Catalogo vuoto.</div>'; }
+  else { magBody='<div class="card"><div class="inner-list">'+arts.map(m=>{ const i=magInfo(m);
+      return `<div class="row-item" onclick="document.getElementById('mag-ov').remove();showMaterialeDetail('${m.id}')" style="align-items:center">
+        <div class="ri" style="flex:1"><div class="ri-nome">${esc(matEtichetta(m))}</div>
+        <div class="ri-meta" style="margin-top:2px">disp: <b style="color:${i.disponibile>0?'#22c55e':'var(--text3)'}">${i.disponibile} ${m.unita}</b> · scorta ${i.sc} · impegnato ${i.impegnato}</div></div>
+        <span style="color:var(--text3)">›</span></div>`;
+    }).join('')+'</div></div>'; }
+  const ord=materialiDaOrdinare();
+  let ordBody;
+  if(!ord.length){ ordBody='<div class="empty-state" style="padding:20px 10px"><div class="empty-big">✅</div>Nessun materiale da ordinare.</div>'; }
+  else { ordBody='<div style="text-align:right;margin-bottom:8px"><button onclick="condividiDaOrdinare()" style="padding:8px 12px;border:none;border-radius:8px;background:var(--accent2,#2563eb);color:#fff;font-size:12px;font-weight:600;font-family:inherit">📤 Invia lista a Claude</button></div>'+
+    ord.map(o=>{
+      const dett=o.righe.map(r=>`<div style="font-size:11px;color:var(--text3);padding-left:6px;margin-top:2px">– ${esc(r.commessa.nome)}${r.fase.nome?(' › '+esc(r.fase.nome)):''} · ${r.u.qty} ${o.m.unita}${r.u.richiedente?(' · 👤 '+esc(r.u.richiedente)):''}</div>`).join('');
+      return `<div style="background:var(--bg);border:1px solid rgba(245,158,11,.35);border-radius:10px;padding:9px 11px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:600;font-size:13px">${esc(matEtichetta(o.m))}</span><span style="font-family:var(--mono);color:#f59e0b;font-weight:700">${o.qty} ${o.m.unita}</span></div>
+        ${dett}</div>`;
+    }).join(''); }
+  const tb=(id,lbl)=>`<button onclick="apriMagazzino('${id}')" style="flex:1;padding:10px;border:none;border-radius:9px;font-weight:700;font-size:13px;font-family:inherit;${tab===id?'background:var(--accent2,#2563eb);color:#fff':'background:var(--surface2,#1c2030);color:var(--text2)'}">${lbl}</button>`;
+  const inner=`<div style="display:flex;gap:8px;margin-bottom:12px">${tb('mag','📦 In magazzino')}${tb('ord','🛒 Da ordinare ('+ord.length+')')}</div>`+
+    (tab==='ord'?ordBody:magBody)+
+    (tab==='mag'?`<div style="display:flex;gap:8px;margin-top:10px"><button onclick="document.getElementById('mag-ov').remove();caricaMateriali()" style="flex:1;padding:10px;border:none;border-radius:9px;background:var(--surface2,#1c2030);color:var(--accent);font-size:12px;font-family:inherit">📥 Carica catalogo</button><button onclick="document.getElementById('mag-ov').remove();openModalMateriale()" style="flex:1;padding:10px;border:none;border-radius:9px;background:var(--surface2,#1c2030);color:var(--accent);font-size:12px;font-family:inherit">➕ Nuovo articolo</button></div>`:'');
+  const old=document.getElementById('mag-ov'); if(old)old.remove();
+  document.body.appendChild(_bfOv('mag-ov','🏬 Magazzino',inner));
 }
 
 
@@ -2735,7 +2771,7 @@ function showMaterialeDetail(id){
   const usages=[];
   state.commesse.forEach(c=>(c.fasi||[]).forEach(f=>{const u=(f.materiali||[]).find(x=>x.id===id);if(u)usages.push({...u,fase:f,commessa:c});}));
   const totQty=usages.reduce((s,u)=>s+(parseFloat(u.qty)||0),0);
-  const daOrd=usages.filter(u=>u.stato==='ordinare').reduce((s,u)=>s+(parseFloat(u.qty)||0),0);
+  const daOrd=magInfo(m).manca;
   document.getElementById('sa-title').textContent=m.nome;
   let html=`<div class="sf-g"><div style="font-size:14px;font-weight:600;margin-bottom:4px">${esc(matEtichetta(m))}</div>
     <div style="font-size:12px;color:var(--text2)">${m.unita}${m.fornitore?' · Fornitore: '+m.fornitore:''}${m.codice?` · <span style="font-family:var(--mono);color:var(--accent)">${m.codice}</span>`:''}</div>
@@ -3150,7 +3186,7 @@ function selectFase(cid,fid){
   document.getElementById('sh-title').textContent=f.nome;
   const dur=f.inizio&&f.fine?diffDays(parseDate(f.inizio),parseDate(f.fine))+1:0;
   const tecnici=(f.tecnici||[]).map(tid=>{const t=getTecnico(tid);return t?`<span class="chip" style="color:#4f9cf9;border-color:#4f9cf940">${t.nome}</span>`:null;}).filter(Boolean).join(' ')||'—';
-  const materiali=(f.materiali||[]).map(({id,qty,marca,serie,stato})=>{const m=getMateriale(id);if(!m)return null;const ord=stato==='ordinare';const extra=[marca&&('Marca: '+esc(marca)),serie&&('S/N: '+esc(serie))].filter(Boolean).join(' · ');return`<div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px"><div style="display:flex;justify-content:space-between;align-items:center"><span>${ord?'🛒 ':'✅ '}${esc(matEtichetta(m))}</span><span style="font-family:var(--mono);color:var(--accent)">${qty} ${m.unita}</span></div>${extra?`<div style="font-size:10px;color:var(--text3);margin-top:2px">${extra}</div>`:''}</div>`;}).filter(Boolean).join('')||'<div style="font-size:12px;color:var(--text3)">Nessun materiale</div>';
+  const materiali=(f.materiali||[]).map(({id,qty,marca,serie})=>{const m=getMateriale(id);if(!m)return null;const ord=articoloInOrdine(id);const extra=[marca&&('Marca: '+esc(marca)),serie&&('S/N: '+esc(serie))].filter(Boolean).join(' · ');return`<div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px"><div style="display:flex;justify-content:space-between;align-items:center"><span>${ord?'🛒 ':'✅ '}${esc(matEtichetta(m))}</span><span style="font-family:var(--mono);color:var(--accent)">${qty} ${m.unita}</span></div>${extra?`<div style="font-size:10px;color:var(--text3);margin-top:2px">${extra}</div>`:''}</div>`;}).filter(Boolean).join('')||'<div style="font-size:12px;color:var(--text3)">Nessun materiale</div>';
 
   document.getElementById('sh-body').innerHTML=`
     <div class="sf-g"><div class="sf-lbl">Commessa</div><div style="display:flex;align-items:center;gap:6px"><span class="dot-sm" style="background:${c.colore}"></span><span>${c.nome}</span></div></div>
@@ -3273,7 +3309,7 @@ function openMatPicker(){
       <div id="mp-scorta" style="font-size:12px;color:var(--text3)"></div>
       <div style="display:flex;gap:8px">
         <div style="flex:1"><label style="font-size:11px;color:var(--text3)">Quantità</label>
-          <input type="number" id="mp-qta" min="0" value="1" oninput="mpDefaultStato()" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:10px;font-size:15px;font-family:inherit"></div>
+          <input type="number" id="mp-qta" min="0" value="1" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:10px;font-size:15px;font-family:inherit"></div>
         <div style="width:70px"><label style="font-size:11px;color:var(--text3)">Unità</label>
           <div id="mp-unit" style="padding:11px 0;font-size:15px;color:var(--text2)">—</div></div>
       </div>
@@ -3283,10 +3319,7 @@ function openMatPicker(){
         <div style="flex:1"><label style="font-size:11px;color:var(--text3)">N° serie (opz.)</label>
           <input type="text" id="mp-serie" placeholder="S/N" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:10px;font-size:14px;font-family:inherit"></div>
       </div>
-      <div><label style="font-size:11px;color:var(--text3)">Stato</label>
-        <select id="mp-stato" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:10px;font-size:15px;font-family:inherit">
-          <option value="presente">✅ Presente in magazzino</option>
-          <option value="ordinare">🛒 Da ordinare</option></select></div>
+      <div id="mp-scorta-hint" style="font-size:11px;color:var(--text3)"></div>
       <button onclick="matPickerAdd()" style="width:100%;padding:13px;border:none;border-radius:10px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;font-family:inherit;margin-top:4px">➕ Aggiungi alla fase</button>
       <button onclick="nuovoArticoloCatalogo()" style="width:100%;padding:11px;border:none;border-radius:10px;background:transparent;color:var(--accent,#4f9cf9);font-size:13px;font-family:inherit">➕ Articolo non in elenco…</button>
     </div>`;
@@ -3308,23 +3341,20 @@ function mpFillVar(){
 function mpInfo(){
   const m=getMateriale(document.getElementById('mp-var').value);
   document.getElementById('mp-unit').textContent=m?m.unita:'—';
-  document.getElementById('mp-scorta').textContent=m?('In magazzino: '+(m.scorta||0)+' '+m.unita):'';
-  mpDefaultStato();
-}
-function mpDefaultStato(){
-  const m=getMateriale(document.getElementById('mp-var').value); if(!m)return;
-  const q=parseFloat(document.getElementById('mp-qta').value)||0;
-  document.getElementById('mp-stato').value=((m.scorta||0)>=q && q>0)?'presente':'ordinare';
+  if(m){ const i=magInfo(m); document.getElementById('mp-scorta').textContent='Magazzino: '+i.sc+' '+m.unita+' · disponibile: '+i.disponibile+' '+m.unita;
+    const h=document.getElementById('mp-scorta-hint'); if(h)h.textContent=i.disponibile>0?('Verrà scalato dal magazzino fin dove possibile.'):('Scorta esaurita: finirà in "Da ordinare".'); }
+  else { document.getElementById('mp-scorta').textContent=''; }
 }
 function matPickerAdd(){
   const id=document.getElementById('mp-var').value; if(!id)return;
   const qty=parseFloat(document.getElementById('mp-qta').value)||0;
   const marca=document.getElementById('mp-marca').value.trim();
   const serie=document.getElementById('mp-serie').value.trim();
-  const stato=document.getElementById('mp-stato').value;
+  const t=(typeof currentTec==='function')?currentTec():null;
+  const rich=(t&&t.nome)||'—'; const richRuolo=t?(isUfficio(t)?'Ufficio':'Tecnico'):'';
   const ex=state.faseMaterialiSel.find(x=>x.id===id);
-  if(ex){ ex.qty=qty; ex.marca=marca; ex.serie=serie; ex.stato=stato; }
-  else state.faseMaterialiSel.push({id,qty,marca,serie,stato});
+  if(ex){ ex.qty=qty; ex.marca=marca; ex.serie=serie; ex.richiedente=rich; ex.richiedenteRuolo=richRuolo; }
+  else state.faseMaterialiSel.push({id,qty,marca,serie,richiedente:rich,richiedenteRuolo:richRuolo});
   const ov=document.getElementById('mat-pick-ov'); if(ov) ov.remove();
   renderMaterialiList();
 }
@@ -3346,11 +3376,12 @@ function renderMaterialiList(){
   const el=document.getElementById('mf-materiali-list');
   if(!state.faseMaterialiSel.length){el.innerHTML='';return;}
   el.innerHTML=`<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:4px">`+
-  state.faseMaterialiSel.map(({id,qty,marca,serie,stato})=>{
+  state.faseMaterialiSel.map(({id,qty,marca,serie,richiedente})=>{
     const m=getMateriale(id);if(!m)return'';
-    const sub=[]; if(marca)sub.push('Marca: '+esc(marca)); if(serie)sub.push('S/N: '+esc(serie)); sub.push('mag: '+(m.scorta||0)+' '+m.unita);
-    const ord=stato==='ordinare';
-    const badge=`<span onclick="toggleMatStato('${id}')" style="cursor:pointer;font-size:11px;font-weight:700;padding:3px 7px;border-radius:20px;${ord?'background:rgba(245,158,11,.18);color:#f59e0b':'background:rgba(34,197,94,.18);color:#22c55e'}">${ord?'🛒 da ordinare':'✅ presente'}</span>`;
+    const disp=magInfo(m).disponibile;
+    const ord=(parseFloat(qty)||0)>disp;
+    const sub=[]; if(marca)sub.push('Marca: '+esc(marca)); if(serie)sub.push('S/N: '+esc(serie)); if(richiedente)sub.push('da: '+esc(richiedente));
+    const badge=`<span style="font-size:11px;font-weight:700;padding:3px 7px;border-radius:20px;${ord?'background:rgba(245,158,11,.18);color:#f59e0b':'background:rgba(34,197,94,.18);color:#22c55e'}">${ord?'🛒 da ordinare':'✅ da magazzino'}</span>`;
     return`<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:8px 10px">
       <div style="display:flex;align-items:center;gap:8px">
         <div style="flex:1;font-size:13px;font-weight:600">${esc(matEtichetta(m))}</div>
@@ -3360,13 +3391,12 @@ function renderMaterialiList(){
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:5px">
         ${badge}
-        <span style="font-size:11px;color:var(--text3);flex:1">${sub.join(' · ')}</span>
-        <span onclick="editMatExtra('${id}')" style="font-size:12px;color:var(--accent);cursor:pointer">✎ marca/serie</span>
+        <span style="font-size:11px;color:var(--text3);flex:1">${sub.join(' · ')||('disp. mag: '+disp+' '+m.unita)}</span>
+        <span onclick="editMatExtra('${id}')" style="font-size:12px;color:var(--accent);cursor:pointer">✎</span>
       </div>
     </div>`;
   }).join('')+`</div>`;
 }
-function toggleMatStato(id){const it=state.faseMaterialiSel.find(x=>x.id===id);if(it){it.stato=(it.stato==='ordinare')?'presente':'ordinare';renderMaterialiList();}}
 function editMatExtra(id){const it=state.faseMaterialiSel.find(x=>x.id===id);if(!it)return;const marca=prompt('Marca (vuoto per togliere):',it.marca||'');if(marca!==null)it.marca=marca.trim();const serie=prompt('Numero di serie (vuoto per togliere):',it.serie||'');if(serie!==null)it.serie=serie.trim();renderMaterialiList();}
 function updateMatQty(id,val){const item=state.faseMaterialiSel.find(x=>x.id===id);if(item)item.qty=parseFloat(val)||0;}
 function removeMatFromFase(id){state.faseMaterialiSel=state.faseMaterialiSel.filter(x=>x.id!==id);renderMaterialiList();}
