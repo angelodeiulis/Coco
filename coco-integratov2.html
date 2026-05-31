@@ -3602,6 +3602,18 @@ function buildAgendaEvents(){
     }
   });
 
+  // Segnalazione MAGAZZINO: materiale da ordinare (indipendente dalle date)
+  const daOrd=materialiDaOrdinare();
+  if(daOrd.length){
+    const det=daOrd.map(o=>matEtichetta(o.m)+': '+o.qty+' '+o.m.unita).join(' · ');
+    const chi=[...new Set(daOrd.flatMap(o=>o.righe.map(r=>r.u.richiedente)).filter(Boolean))];
+    events.push({id:'auto-magord',auto:true,tipo:'ordine',prio:'urgente',noDismiss:true,
+      icona:'🛒',titolo:`Materiale da ordinare (${daOrd.length})`,
+      meta:['Magazzino'+(chi.length?(' · 👤 '+chi.join(', ')):'')],
+      details:det,dataKey:tStr,sortKey:-60,whenLabel:'ORDINE',
+      actions:[{label:'Apri magazzino',action:`apriMagazzino('ord')`,primary:true},{label:'Invia a Claude',action:`condividiDaOrdinare()`}]});
+  }
+
   getConflicts().forEach((descr,i)=>{
     events.push({id:'auto-conf-'+i,auto:true,tipo:'coord',prio:'urgente',
       icona:'🔀',titolo:'Conflitto risorsa umana',
@@ -3731,7 +3743,7 @@ function renderAgenda(){
 function renderAgendaItem(e){
   const actions=(e.actions||[]).map(a=>`<button class="ag-act-btn${a.primary?' primary':''}" onclick="event.stopPropagation();${a.action}">${a.label}</button>`).join('');
   let dismissBtn='';
-  if(e.auto&&!e.done&&e.tipo!=='coord'&&e.tipo!=='blocco')dismissBtn=`<button class="ag-act-btn done" onclick="event.stopPropagation();dismissAutoEvent('${e.id}')">✓ Visto</button>`;
+  if(e.auto&&!e.done&&e.tipo!=='coord'&&e.tipo!=='blocco'&&!e.noDismiss)dismissBtn=`<button class="ag-act-btn done" onclick="event.stopPropagation();dismissAutoEvent('${e.id}')">✓ Visto</button>`;
   const click=e.commessaId&&e.faseId?`selectFase('${e.commessaId}','${e.faseId}')`:(e.manual?`editEvento('${e.eventoId}')`:'');
   return `<div class="ag-item ${e.prio}${e.done?' done':''}" ${click?`onclick="${click}"`:''}>
     <div class="ag-icon ${e.prio}">${e.icona}</div>
