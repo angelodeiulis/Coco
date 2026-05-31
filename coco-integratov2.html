@@ -757,6 +757,7 @@ textarea{resize:vertical;min-height:60px;}
 
 <div class="app-header">
   <div class="logo">Co<span>.</span>Co<span>.</span></div>
+  <span id="hdr-curuser" style="font-size:11px;color:var(--accent,#4f9cf9);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:96px"></span>
   <div class="hdr-title" id="hdr-title">Lavori</div>
   <button class="hbtn" id="hdr-add-btn" onclick="openModalCommessa()">＋</button>
   <button class="hbtn" id="hdr-menu-btn" onclick="toggleHdrMenu(event)" title="Menu">&#8942;</button>
@@ -2579,6 +2580,7 @@ if(state.currentTecnicoId&&getTecnico(state.currentTecnicoId)){
 setTimeout(()=>{try{maybeAutoBackupOnOpen();}catch(e){console.warn(e);}},800);
 
 function renderAll(){
+  const _cu=document.getElementById('hdr-curuser'); if(_cu){const _ct=(typeof currentTec==='function')?currentTec():null; _cu.textContent=_ct?('· '+_ct.nome):'';}
   renderCommesse();
   updateAgendaBadge();
   if(state.activeView==='gantt')renderGantt();
@@ -5007,6 +5009,7 @@ function setView(v,btn){
   if(btn&&btn.classList.contains('nav-item'))btn.classList.add('active');
   const titles={commesse:'Lavori',agenda:'Agenda',gantt:'Gantt',risorse:'Risorse',report:'Report & Presenze',ai:'Coordinatore AI',backup:'Backup',computo:'Computi Metrici'};
   document.getElementById('hdr-title').textContent=titles[v]||v;
+  const _cu=document.getElementById('hdr-curuser'); if(_cu){const _ct=(typeof currentTec==='function')?currentTec():null; _cu.textContent=_ct?('· '+_ct.nome):'';}
   const hdrBtn=document.getElementById('hdr-add-btn');
   hdrBtn.style.display=(v==='risorse'||v==='commesse'||v==='computo')?'flex':'none';
   if(v==='risorse')hdrBtn.onclick=()=>openModalTecnico();
