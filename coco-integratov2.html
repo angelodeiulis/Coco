@@ -1218,7 +1218,7 @@ let aiHistory=[];
 const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
-const fmt=d=>d.toISOString().slice(0,10);
+const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -1271,14 +1271,14 @@ function getCommessa(id){return state.commesse.find(x=>x.id===id);}
 function getTecnico(id){return state.tecnici.find(x=>x.id===id);}
 function getMateriale(id){return state.materiali.find(x=>x.id===id);}
 function setScorta(id){const m=getMateriale(id);if(!m)return;const v=prompt('Scorta in magazzino ('+m.unita+'):',m.scorta||0);if(v===null)return;const nuovo=parseFloat(v)||0;const delta=nuovo-(m.scorta||0);m.scorta=nuovo;const t=(typeof currentTec==='function')?currentTec():null;state.movimenti=state.movimenti||[];if(delta!==0)state.movimenti.push({id:'mv'+Date.now(),quando:Date.now(),data:fmt(today()),articoloId:id,tipo:'rettifica',qty:Math.abs(delta),verso:delta>0?'+':'-',autore:(t&&t.nome)||'—',nota:'rettifica scorta'});save();if(typeof renderAll==='function')renderAll();if(typeof showMaterialeDetail==='function')showMaterialeDetail(id);}
-function registraMovimento(id,tipo,qty,nota){
+function registraMovimento(id,tipo,qty,nota,data){
   const m=getMateriale(id); if(!m)return;
   qty=parseFloat(qty)||0; if(qty<=0){alert('Quantità non valida.');return;}
   const t=(typeof currentTec==='function')?currentTec():null;
   if(tipo==='carico') m.scorta=(m.scorta||0)+qty;
   else if(tipo==='scarico') m.scorta=Math.max(0,(m.scorta||0)-qty);
   state.movimenti=state.movimenti||[];
-  state.movimenti.push({id:'mv'+Date.now(),quando:Date.now(),data:fmt(today()),articoloId:id,tipo,qty,autore:(t&&t.nome)||'—',nota:nota||''});
+  state.movimenti.push({id:'mv'+Date.now(),quando:Date.now(),data:data||fmt(today()),articoloId:id,tipo,qty,autore:(t&&t.nome)||'—',nota:nota||''});
   save(); if(typeof renderAll==='function')renderAll();
 }
 function caricoArticolo(id){const q=prompt('CARICO — quantità da aggiungere al magazzino:');if(q===null)return;const n=(prompt('Nota (es. fornitore, n° bolla) — opzionale:','')||'').trim();registraMovimento(id,'carico',q,n);showMaterialeDetail(id);}
@@ -1322,6 +1322,7 @@ function arrivoMateriale(){
     <div><label style="font-size:11px;color:var(--text3)">Tipologia</label><select id="am-tip" onchange="amFillVar()" style="${ss}"></select></div>
     <div><label style="font-size:11px;color:var(--text3)">Variante / misura</label><select id="am-var" onchange="amPrefForn()" style="${ss}"></select></div>
     <div><label style="font-size:11px;color:var(--text3)">Quantità in arrivo</label><input type="number" id="am-qta" min="0" value="1" style="${ss}"></div>
+    <div><label style="font-size:11px;color:var(--text3)">Data arrivo</label><input type="date" id="am-data" value="${fmt(today())}" style="${ss}"></div>
     <div><label style="font-size:11px;color:var(--text3)">Provenienza</label><select id="am-prov" onchange="amProvChange()" style="${ss}"><option value="fornitore">🏢 Da fornitore</option><option value="cantiere">🏗️ Da altro cantiere</option></select></div>
     <div id="am-forn-wrap"><label style="font-size:11px;color:var(--text3)">Fornitore</label><input type="text" id="am-forn" placeholder="es. Rexel, Sonepar…" style="${ss}"></div>
     <div id="am-cant-wrap" style="display:none"><label style="font-size:11px;color:var(--text3)">Cantiere di provenienza</label><select id="am-cant" style="${ss}">${state.commesse.map(c=>`<option value="${c.id}">${esc(c.nome)}</option>`).join('')||'<option value="">(nessun cantiere)</option>'}</select></div>
@@ -1343,7 +1344,8 @@ function arrivoConferma(){
   if(prov==='fornitore'){const f=document.getElementById('am-forn').value.trim();nota='da fornitore'+(f?(' '+f):'');const m=getMateriale(id);if(f&&m&&!m.fornitore)m.fornitore=f;}
   else{const c=getCommessa(document.getElementById('am-cant').value);nota='da cantiere '+(c?c.nome:'?');}
   const extra=document.getElementById('am-nota').value.trim(); if(extra)nota+=' · '+extra;
-  registraMovimento(id,'carico',qty,nota);
+  const data=document.getElementById('am-data').value||fmt(today());
+  registraMovimento(id,'carico',qty,nota,data);
   const ov=document.getElementById('arrivo-ov');if(ov)ov.remove();
   apriMagazzino('sto');
 }
