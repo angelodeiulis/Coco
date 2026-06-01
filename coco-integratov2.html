@@ -686,6 +686,9 @@ textarea{resize:vertical;min-height:60px;}
 
   <!-- RAPPORTINI -->
   <div class="view" id="view-cf-rapportini"><div id="cf-rapportini-inner"></div></div>
+
+  <!-- LAVORI (tecnico: materiali + briefing) -->
+  <div class="view" id="view-cf-lavori"><div class="page-pad" id="cf-lavori-inner"></div></div>
 </div>
 
 
@@ -693,6 +696,7 @@ textarea{resize:vertical;min-height:60px;}
   <button class="nav-item active" id="nav-cf-oggi" onclick="cf_setView('oggi',this)"><span class="nav-icon">📍</span><span class="nav-label">Oggi</span></button>
   <button class="nav-item" id="nav-cf-presenze" onclick="cf_setView('presenze',this)"><span class="nav-icon">⏱️</span><span class="nav-label">Presenze</span></button>
   <button class="nav-item" id="nav-cf-rapportini" onclick="cf_setView('rapportini',this)"><span class="nav-icon">📋</span><span class="nav-label">Rapportini</span></button>
+  <button class="nav-item" id="nav-cf-lavori" onclick="cf_setView('lavori',this)"><span class="nav-icon">🏗️</span><span class="nav-label">Lavori</span></button>
 </nav>
 <button id="cf-fab-voce" onclick="catturaRapida()" title="Ricorda" style="position:fixed;right:16px;bottom:calc(var(--nav-h,60px) + var(--safe-b,0px) + 16px);z-index:80;width:56px;height:56px;border-radius:50%;border:none;background:var(--accent2,#2563eb);color:#fff;font-size:24px;box-shadow:0 6px 18px rgba(37,99,235,.5)">🧠</button>
 </div>
@@ -1454,7 +1458,7 @@ function currentTec(){return getTecnico(state.currentTecnicoId);}
 
 // cf_setView aggiornato: aggiorna header campo
 function cf_setViewTitle(v){
-  const titles={oggi:'Oggi',presenze:'Presenze',rapportini:'Rapportini'};
+  const titles={oggi:'Oggi',presenze:'Presenze',rapportini:'Rapportini',lavori:'Lavori'};
   const el=document.getElementById('cf-hdr-title');
   if(el)el.textContent=titles[v]||v;
 }
@@ -2546,15 +2550,38 @@ function cf_setView(v,btn){
   document.querySelectorAll('#cf-bottom-nav .nav-item').forEach(b=>b.classList.remove('active'));
   if(btn)btn.classList.add('active');
   cf_setViewTitle(v);
-  ['oggi','presenze','rapportini'].forEach(id=>{
+  ['oggi','presenze','rapportini','lavori'].forEach(id=>{
     const el=document.getElementById('view-cf-'+id);
     if(el)el.classList.toggle('active',id===v);
   });
   if(v==='oggi')renderOggi();
   else if(v==='presenze')cf_renderPresenze();
   else if(v==='rapportini')renderRapportiniList();
+  else if(v==='lavori')cf_renderLavori();
 }
 
+function cf_renderLavori(){
+  const el=document.getElementById('cf-lavori-inner'); if(!el)return;
+  if(!state.commesse.length){ el.innerHTML='<div class="empty-state" style="padding:30px 10px"><div class="empty-big">🏗️</div>Nessun lavoro.</div>'; return; }
+  let html='<div style="font-size:11px;color:var(--text3);margin:4px 0 10px">Puoi aggiornare <b>materiali</b> e <b>briefing</b>. Nome e date li gestisce l\u2019ufficio.</div>';
+  state.commesse.forEach(c=>{
+    const fasi=c.fasi||[];
+    html+=`<div style="margin-bottom:14px"><div style="font-weight:700;font-size:14px;margin-bottom:6px">${esc(c.nome)}</div>`;
+    if(!fasi.length){ html+='<div style="font-size:12px;color:var(--text3);padding-left:4px">Nessuna fase</div>'; }
+    else fasi.forEach(f=>{
+      const nMat=(f.materiali||[]).length;
+      html+=`<div style="background:var(--surface,#141720);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:8px"><span class="s-dot s-${f.stato}"></span><span style="flex:1;font-size:13px;font-weight:600">${esc(f.nome)}</span>
+        <span style="font-size:11px;color:var(--text3)">${fmtS(f.inizio)}→${fmtS(f.fine)}</span></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button onclick="editFase('${c.id}','${f.id}')" style="flex:1;padding:9px;border:none;border-radius:9px;background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-size:13px;font-weight:600;font-family:inherit">📦 Materiali (${nMat})</button>
+          <button onclick="apriBriefing('${c.id}','${f.id}')" style="flex:1;padding:9px;border:none;border-radius:9px;background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-size:13px;font-weight:600;font-family:inherit">📋 Briefing</button>
+        </div></div>`;
+    });
+    html+='</div>';
+  });
+  el.innerHTML=html;
+}
 function cf_goToday(){
   if(dayDirtyConfirmLeave()){
     state.tsDate=fmt(today());loadDayDraft(state.tsDate);cf_renderPresenze();
@@ -3194,7 +3221,7 @@ function selectFase(cid,fid){
     <div class="sf-g"><div class="sf-lbl">Commessa</div><div style="display:flex;align-items:center;gap:6px"><span class="dot-sm" style="background:${c.colore}"></span><span>${c.nome}</span></div></div>
     <div class="sf-g"><div class="sf-lbl">Periodo</div><div style="font-size:14px">${fmtF(f.inizio)} → ${fmtF(f.fine)}</div><div style="font-size:12px;color:var(--text2);margin-top:2px">${dur} giorni lavorativi</div></div>
     <div class="sf-g"><div class="sf-lbl">Tecnici</div><div style="display:flex;flex-wrap:wrap;gap:4px">${tecnici}</div>${f.ditta?`<div style="font-size:12px;color:var(--text2);margin-top:4px">Ditta: ${f.ditta}</div>`:''}</div>
-    <div class="sf-g"><div class="sf-lbl">Materiali</div>${materiali}</div>
+    <div class="sf-g"><div class="sf-lbl">Materiali</div>${materiali}${f.matMod?`<div style="font-size:10px;color:var(--text3);margin-top:6px;text-align:right">✎ aggiornati da ${esc(f.matMod.autore)} il ${_bfData(f.matMod.data)}</div>`:''}</div>
     ${f.note?`<div class="sf-g"><div class="sf-lbl">Note</div><div style="font-size:13px;color:var(--text2)">${f.note}</div></div>`:''}
     <div class="sf-g"><div class="sf-lbl">Cambia stato</div><div class="stato-grid">${Object.entries(SL).map(([s,l])=>`<button class="stato-btn" onclick="setStatoFase('${cid}','${fid}','${s}')" style="color:${SC[s]};border-color:${SC[s]}40;background:${f.stato===s?SC[s]+'22':'transparent'}">${l}</button>`).join('')}</div></div>
     <div class="act-row">
@@ -3374,8 +3401,8 @@ function matPickerAdd(){
   const t=(typeof currentTec==='function')?currentTec():null;
   const rich=(t&&t.nome)||'—'; const richRuolo=t?(isUfficio(t)?'Ufficio':'Tecnico'):'';
   const ex=state.faseMaterialiSel.find(x=>x.id===id);
-  if(ex){ ex.qty=qty; ex.marca=marca; ex.serie=serie; ex.richiedente=rich; ex.richiedenteRuolo=richRuolo; }
-  else state.faseMaterialiSel.push({id,qty,marca,serie,richiedente:rich,richiedenteRuolo:richRuolo});
+  if(ex){ ex.qty=qty; ex.marca=marca; ex.serie=serie; ex.richiedente=rich; ex.richiedenteRuolo=richRuolo; ex.data=fmt(today()); }
+  else state.faseMaterialiSel.push({id,qty,marca,serie,richiedente:rich,richiedenteRuolo:richRuolo,data:fmt(today())});
   const ov=document.getElementById('mat-pick-ov'); if(ov) ov.remove();
   renderMaterialiList();
 }
@@ -3397,11 +3424,11 @@ function renderMaterialiList(){
   const el=document.getElementById('mf-materiali-list');
   if(!state.faseMaterialiSel.length){el.innerHTML='';return;}
   el.innerHTML=`<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:4px">`+
-  state.faseMaterialiSel.map(({id,qty,marca,serie,richiedente})=>{
+  state.faseMaterialiSel.map(({id,qty,marca,serie,richiedente,data})=>{
     const m=getMateriale(id);if(!m)return'';
     const disp=magInfo(m).disponibile;
     const ord=(parseFloat(qty)||0)>disp;
-    const sub=[]; if(marca)sub.push('Marca: '+esc(marca)); if(serie)sub.push('S/N: '+esc(serie)); if(richiedente)sub.push('da: '+esc(richiedente));
+    const sub=[]; if(marca)sub.push('Marca: '+esc(marca)); if(serie)sub.push('S/N: '+esc(serie)); if(richiedente)sub.push('da: '+esc(richiedente)+(data?(' ('+_bfData(data)+')'):''));
     const badge=`<span style="font-size:11px;font-weight:700;padding:3px 7px;border-radius:20px;${ord?'background:rgba(245,158,11,.18);color:#f59e0b':'background:rgba(34,197,94,.18);color:#22c55e'}">${ord?'🛒 da ordinare':'✅ da magazzino'}</span>`;
     return`<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:8px 10px">
       <div style="display:flex;align-items:center;gap:8px">
@@ -3432,6 +3459,7 @@ function openModalFase(cid){
   document.getElementById('mf-stato').value='pianificata';
   buildTecniciList([]);renderMaterialiList();
   document.getElementById('mf-del').style.display='none';
+  ['mf-nome','mf-inizio','mf-fine'].forEach(id=>{const e=document.getElementById(id);if(e){e.disabled=false;e.style.opacity='1';}});
   document.getElementById('modal-fase').classList.add('open');
 }
 function editFase(cid,fid){
@@ -3448,14 +3476,22 @@ function editFase(cid,fid){
   document.getElementById('mf-note').value=f.note||'';
   buildTecniciList(state.faseTecniciSel);renderMaterialiList();
   document.getElementById('mf-del').style.display=isUfficio(currentTec())?'block':'none';
+  const _uffF=isUfficio(currentTec());
+  ['mf-nome','mf-inizio','mf-fine'].forEach(id=>{const e=document.getElementById(id);if(e){e.disabled=!_uffF;e.style.opacity=_uffF?'1':'.6';}});
   document.getElementById('modal-fase').classList.add('open');
 }
 function saveFase(){
-  const nome=document.getElementById('mf-nome').value.trim();
-  if(!nome)return alert('Inserisci il nome fase');
-  const data={nome,inizio:document.getElementById('mf-inizio').value,fine:document.getElementById('mf-fine').value,stato:document.getElementById('mf-stato').value,ditta:document.getElementById('mf-ditta').value.trim(),note:document.getElementById('mf-note').value.trim(),tecnici:[...state.faseTecniciSel],materiali:state.faseMaterialiSel.map(x=>({...x}))};
+  const uff=isUfficio(currentTec());
   const c=getCommessa(state.editingFaseCommessaId);if(!c)return;
-  if(state.editingFaseId){const f=getFase(state.editingFaseCommessaId,state.editingFaseId);if(f)Object.assign(f,data);}
+  const exist=state.editingFaseId?getFase(state.editingFaseCommessaId,state.editingFaseId):null;
+  let nome=document.getElementById('mf-nome').value.trim();
+  let inizio=document.getElementById('mf-inizio').value, fine=document.getElementById('mf-fine').value;
+  if(!uff && exist){ nome=exist.nome; inizio=exist.inizio; fine=exist.fine; } // il tecnico non modifica nome/date
+  if(!nome)return alert('Inserisci il nome fase');
+  const t=currentTec();
+  const data={nome,inizio,fine,stato:document.getElementById('mf-stato').value,ditta:document.getElementById('mf-ditta').value.trim(),note:document.getElementById('mf-note').value.trim(),tecnici:[...state.faseTecniciSel],materiali:state.faseMaterialiSel.map(x=>({...x}))};
+  data.matMod={autore:(t&&t.nome)||'—',data:fmt(today())};
+  if(exist){Object.assign(exist,data);}
   else{if(!c.fasi)c.fasi=[];c.fasi.push({id:'f'+Date.now(),...data});state.expanded[c.id]=true;}
   closeModal('modal-fase');save();renderAll();
 }
@@ -5435,6 +5471,7 @@ function autoBriefSerale(){
 function _bfData(ds){ if(!ds) return ''; const d=parseDate(ds); return d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'2-digit'}); }
 function _bfNomi(ids){ return (ids||[]).map(id=>(getTecnico(id)||{}).nome).filter(Boolean); }
 function _bfPresenti(b){ const t=_bfNomi(b.tecnici),u=_bfNomi(b.ufficio),p=[]; if(u.length)p.push('Ufficio: '+u.join(', ')); if(t.length)p.push('Tecnici: '+t.join(', ')); if(b.cliente)p.push('Cliente: '+esc(b.cliente)); return p.join(' · ')||'—'; }
+function _bfFirma(b){ return b&&b.modAutore?(' · ✎ '+esc(b.modAutore)+(b.modData?(' '+_bfData(b.modData)):'')):''; }
 function _bfOv(id,titolo,inner){
   const ov=document.createElement('div'); ov.id=id;
   ov.style.cssText='position:fixed;inset:0;z-index:320;background:rgba(0,0,0,.8);display:flex;align-items:flex-end;';
@@ -5454,7 +5491,7 @@ function apriBriefing(cid,fid){
       const f=b.faseId?((c.fasi||[]).find(x=>x.id===b.faseId)||{}).nome:'';
       return `<div class="row-item" onclick="document.getElementById('brief-list-ov').remove();apriBriefingForm('${b.id}')" style="align-items:flex-start">
         <div class="ri" style="flex:1"><div class="ri-nome">📅 ${_bfData(b.data)}${f?(' · '+esc(f)):' · tutto il lavoro'}</div>
-        <div class="ri-meta" style="margin-top:2px">${_bfPresenti(b)}</div></div><span style="color:var(--text3)">›</span></div>`;
+        <div class="ri-meta" style="margin-top:2px">${_bfPresenti(b)}${_bfFirma(b)}</div></div><span style="color:var(--text3)">›</span></div>`;
     }).join('')+'</div></div>'; }
   const head=`<button onclick="document.getElementById('brief-list-ov').remove();nuovoBriefing('${cid}','${fid||''}')" style="width:100%;padding:13px;border:none;border-radius:10px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;margin-bottom:12px">➕ Nuovo briefing</button>`;
   document.body.appendChild(_bfOv('brief-list-ov','📋 Briefing — '+esc(c.nome),head+body));
@@ -5471,7 +5508,7 @@ function registroBriefing(){
       const f=b.faseId?(((c.fasi||[]).find(x=>x.id===b.faseId)||{}).nome||''):'';
       return `<div class="row-item" onclick="document.getElementById('brief-reg-ov').remove();apriBriefingForm('${b.id}')" style="align-items:flex-start">
         <div class="ri" style="flex:1"><div class="ri-nome">${esc(c.nome)}${f?(' › '+esc(f)):''}</div>
-        <div class="ri-meta" style="margin-top:2px">📅 ${_bfData(b.data)} · ${_bfPresenti(b)}</div></div><span style="color:var(--text3)">›</span></div>`;
+        <div class="ri-meta" style="margin-top:2px">📅 ${_bfData(b.data)} · ${_bfPresenti(b)}${_bfFirma(b)}</div></div><span style="color:var(--text3)">›</span></div>`;
     }).join('')+'</div></div>'; }
   document.body.appendChild(_bfOv('brief-reg-ov','📋 Registro briefing ('+list.length+')',body));
 }
@@ -5526,6 +5563,8 @@ function _bfReadForm(){
 function salvaBriefingForm(){
   const e=window._bfEdit; if(!e) return;
   const d=_bfReadForm();
+  const _t=(typeof currentTec==='function')?currentTec():null;
+  d.modAutore=(_t&&_t.nome)||'—'; d.modData=fmt(today());
   if(e.id){ const b=state.briefings.find(x=>x.id===e.id); if(b) Object.assign(b,d); }
   else { state.briefings=state.briefings||[]; state.briefings.push(Object.assign({id:'bf'+Date.now(),commessaId:e.commessaId,creato:Date.now()},d)); }
   save();
