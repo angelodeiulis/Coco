@@ -1221,7 +1221,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='38';
+const APP_VERSION='39';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -3552,8 +3552,8 @@ function renderMaterialiList(){
     </div>`;
   }).join('')+`</div>`;
 }
-function editMatExtra(id){const it=state.faseMaterialiSel.find(x=>x.id===id);if(!it)return;const marca=prompt('Marca (vuoto per togliere):',it.marca||'');if(marca!==null)it.marca=marca.trim();const serie=prompt('Numero di serie (vuoto per togliere):',it.serie||'');if(serie!==null)it.serie=serie.trim();renderMaterialiList();}
-function updateMatQty(id,val){const item=state.faseMaterialiSel.find(x=>x.id===id);if(item)item.qty=parseFloat(val)||0;}
+function editMatExtra(id){const it=state.faseMaterialiSel.find(x=>x.id===id);if(!it)return;const marca=prompt('Marca (vuoto per togliere):',it.marca||'');if(marca!==null)it.marca=marca.trim();const serie=prompt('Numero di serie (vuoto per togliere):',it.serie||'');if(serie!==null)it.serie=serie.trim();it.data=fmt(today());renderMaterialiList();}
+function updateMatQty(id,val){const item=state.faseMaterialiSel.find(x=>x.id===id);if(item){item.qty=parseFloat(val)||0;item.data=fmt(today());const t=(typeof currentTec==='function')?currentTec():null;if(t){item.richiedente=t.nome;item.richiedenteRuolo=isUfficio(t)?'Ufficio':'Tecnico';}renderMaterialiList();}}
 function removeMatFromFase(id){state.faseMaterialiSel=state.faseMaterialiSel.filter(x=>x.id!==id);renderMaterialiList();}
 
 function openModalFase(cid){
