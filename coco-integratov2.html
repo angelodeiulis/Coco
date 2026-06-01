@@ -1221,7 +1221,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='37';
+const APP_VERSION='38';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -1299,6 +1299,26 @@ function fabbisognoArticolo(id){
 }
 function magInfo(m){ const {tot,righe}=fabbisognoArticolo(m.id); const sc=m.scorta||0; return {sc,tot,righe,impegnato:Math.min(sc,tot),disponibile:Math.max(0,sc-tot),manca:Math.max(0,tot-sc)}; }
 function articoloInOrdine(id){ const m=getMateriale(id); if(!m)return false; return magInfo(m).manca>0; }
+function _altraDomanda(id,cidExcl,fidExcl){
+  let tot=0;
+  state.commesse.forEach(c=>(c.fasi||[]).forEach(f=>{
+    if(c.id===cidExcl && f.id===fidExcl) return;
+    (f.materiali||[]).forEach(u=>{ if(u.id===id) tot+=parseFloat(u.qty)||0; });
+  }));
+  return tot;
+}
+function splitLine(id,qty,cidExcl,fidExcl){
+  const m=getMateriale(id); const S=m?(m.scorta||0):0;
+  if(cidExcl===undefined){cidExcl=state.editingFaseCommessaId;fidExcl=state.editingFaseId;}
+  const avail=Math.max(0,S-_altraDomanda(id,cidExcl,fidExcl));
+  const q=parseFloat(qty)||0; const coperto=Math.min(q,avail);
+  return {coperto,ordinare:Math.max(0,q-coperto),unita:m?m.unita:''};
+}
+function _badgeMat(sp){
+  if(sp.ordinare<=0) return `<span style="font-size:11px;font-weight:700;padding:3px 7px;border-radius:20px;background:rgba(34,197,94,.18);color:#22c55e">✅ da magazzino</span>`;
+  if(sp.coperto<=0) return `<span style="font-size:11px;font-weight:700;padding:3px 7px;border-radius:20px;background:rgba(245,158,11,.18);color:#f59e0b">🛒 da ordinare</span>`;
+  return `<span style="font-size:11px;font-weight:700;padding:3px 6px;border-radius:20px;background:rgba(34,197,94,.18);color:#22c55e">✅ ${sp.coperto} mag.</span><span style="font-size:11px;font-weight:700;padding:3px 6px;border-radius:20px;background:rgba(245,158,11,.18);color:#f59e0b">🛒 ${sp.ordinare} ord.</span>`;
+}
 function materialiDaOrdinare(){
   const res=[];
   state.materiali.forEach(m=>{ const i=magInfo(m); if(i.manca>0) res.push({m,qty:i.manca,tot:i.tot,righe:i.righe}); });
@@ -3302,7 +3322,7 @@ function selectFase(cid,fid){
   document.getElementById('sh-title').textContent=f.nome;
   const dur=f.inizio&&f.fine?diffDays(parseDate(f.inizio),parseDate(f.fine))+1:0;
   const tecnici=(f.tecnici||[]).map(tid=>{const t=getTecnico(tid);return t?`<span class="chip" style="color:#4f9cf9;border-color:#4f9cf940">${t.nome}</span>`:null;}).filter(Boolean).join(' ')||'—';
-  const materiali=(f.materiali||[]).map(({id,qty,marca,serie})=>{const m=getMateriale(id);if(!m)return null;const ord=articoloInOrdine(id);const extra=[marca&&('Marca: '+esc(marca)),serie&&('S/N: '+esc(serie))].filter(Boolean).join(' · ');return`<div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px"><div style="display:flex;justify-content:space-between;align-items:center"><span>${ord?'🛒 ':'✅ '}${esc(matEtichetta(m))}</span><span style="font-family:var(--mono);color:var(--accent)">${qty} ${m.unita}</span></div>${extra?`<div style="font-size:10px;color:var(--text3);margin-top:2px">${extra}</div>`:''}</div>`;}).filter(Boolean).join('')||'<div style="font-size:12px;color:var(--text3)">Nessun materiale</div>';
+  const materiali=(f.materiali||[]).map(({id,qty,marca,serie})=>{const m=getMateriale(id);if(!m)return null;const sp=splitLine(id,qty,cid,fid);const ico=sp.ordinare<=0?'✅ ':(sp.coperto<=0?'🛒 ':'◑ ');const split=(sp.coperto>0&&sp.ordinare>0)?` <span style="color:var(--text3);font-size:10px">(✅${sp.coperto} · 🛒${sp.ordinare})</span>`:'';const extra=[marca&&('Marca: '+esc(marca)),serie&&('S/N: '+esc(serie))].filter(Boolean).join(' · ');return`<div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px"><div style="display:flex;justify-content:space-between;align-items:center"><span>${ico}${esc(matEtichetta(m))}${split}</span><span style="font-family:var(--mono);color:var(--accent)">${qty} ${m.unita}</span></div>${extra?`<div style="font-size:10px;color:var(--text3);margin-top:2px">${extra}</div>`:''}</div>`;}).filter(Boolean).join('')||'<div style="font-size:12px;color:var(--text3)">Nessun materiale</div>';
 
   document.getElementById('sh-body').innerHTML=`
     <div class="sf-g"><div class="sf-lbl">Commessa</div><div style="display:flex;align-items:center;gap:6px"><span class="dot-sm" style="background:${c.colore}"></span><span>${c.nome}</span></div></div>
@@ -3514,9 +3534,9 @@ function renderMaterialiList(){
   state.faseMaterialiSel.map(({id,qty,marca,serie,richiedente,data})=>{
     const m=getMateriale(id);if(!m)return'';
     const disp=magInfo(m).disponibile;
-    const ord=articoloInOrdine(id);
+    const sp=splitLine(id,qty);
     const sub=[]; if(marca)sub.push('Marca: '+esc(marca)); if(serie)sub.push('S/N: '+esc(serie)); if(richiedente)sub.push('da: '+esc(richiedente)+(data?(' ('+_bfData(data)+')'):''));
-    const badge=`<span style="font-size:11px;font-weight:700;padding:3px 7px;border-radius:20px;${ord?'background:rgba(245,158,11,.18);color:#f59e0b':'background:rgba(34,197,94,.18);color:#22c55e'}">${ord?'🛒 da ordinare':'✅ da magazzino'}</span>`;
+    const badge=_badgeMat(sp);
     return`<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:8px 10px">
       <div style="display:flex;align-items:center;gap:8px">
         <div style="flex:1;font-size:13px;font-weight:600">${esc(matEtichetta(m))}</div>
