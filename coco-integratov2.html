@@ -727,11 +727,11 @@ textarea{resize:vertical;min-height:60px;}
       <div class="ff"><label>Attivit&agrave; svolte (una per riga)</label><textarea id="mr-attivita" rows="4" placeholder="Es:&#10;- Sostituito quadro elettrico&#10;- Cablaggio rete LAN sala server&#10;- Test isolamento e verbale"></textarea></div>
       <div class="ff"><label>Materiali utilizzati</label><textarea id="mr-materiali" rows="3" placeholder="Es:&#10;- 30 m cavo FG16 5x6&#10;- 1 quadro ABB 36 moduli&#10;- 12 interruttori MTC"></textarea></div>
       <div class="ff"><label>Note interne</label><textarea id="mr-note" rows="2" placeholder="Anomalie, problemi, comunicazioni..."></textarea></div>
-      <div class="ff"><label>Referente cliente (opz.)</label><input type="text" id="mr-clientenome" placeholder="Es. ing. Rossi"></div>
+      <div class="ff"><label>Referente cliente (opz.)</label><input type="text" id="mr-clientenome" placeholder="Es. ing. Rossi" oninput="toggleFirmaSection()"></div>
 
-      <!-- FIRMA CLIENTE (obbligatoria) -->
-      <div class="ff">
-        <label>Firma cliente *</label>
+      <!-- FIRMA CLIENTE (compare solo se c'è un referente cliente) -->
+      <div class="ff" id="mr-firma-section" style="display:none">
+        <label>Firma cliente (facoltativa)</label>
         <div class="firma-wrap">
           <div class="firma-canvas-box" id="firma-box">
             <canvas id="firma-canvas"></canvas>
@@ -1221,7 +1221,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='42';
+const APP_VERSION='44';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -2383,6 +2383,7 @@ function aggiornaTotaliRapp(){
   if(b)b.textContent=fmtNum(tV)+'h';
 }
 
+function toggleFirmaSection(){const sec=document.getElementById('mr-firma-section');if(!sec)return;const v=(document.getElementById('mr-clientenome').value||'').trim();sec.style.display=v?'block':'none';if(v)setTimeout(initFirmaCanvas,50);}
 function openModalRapportino(preCommessaId){
   state.editingRapportinoId=null;
   document.getElementById('mr-title').textContent='Nuovo Rapportino';
@@ -2401,6 +2402,7 @@ function openModalRapportino(preCommessaId){
   applyRappReadOnly(false);
   document.getElementById('mr-save').disabled=false;
   document.getElementById('modal-rapportino').classList.add('open');
+  toggleFirmaSection();
   setTimeout(initFirmaCanvas,150);  // canvas va dimensionato a modale aperto
 }
 
@@ -2432,6 +2434,7 @@ function editRapportino(id){
   if(r.firma){state.firmaData=r.firma;showFirmaSaved(r.firma);}
   applyRappReadOnly(!owner, r.operatore);
   document.getElementById('modal-rapportino').classList.add('open');
+  toggleFirmaSection();
   setTimeout(initFirmaCanvas,150);
 }
 
@@ -2463,7 +2466,6 @@ async function saveRapportino(){
   const commessaId=document.getElementById('mr-commessa').value;
   if(!data)return alert('Inserisci la data');
   if(!commessaId)return alert('Seleziona una commessa / cantiere');
-  if(!state.firmaData)return alert('La firma del cliente è obbligatoria.');
 
   const tecniciIds=collectSquadra();
   const ore=raccogliOreInput();
@@ -2610,7 +2612,7 @@ function buildRapportinoHTML(r){
 </table>`:'';
   const attLines=r.attivita?r.attivita.split('\n').filter(l=>l.trim()).map(l=>`<li>${esc(l.replace(/^[-·•]\s*/,''))}</li>`).join(''):'';
   const matLines=r.materiali?r.materiali.split('\n').filter(l=>l.trim()).map(l=>`<li>${esc(l.replace(/^[-·•]\s*/,''))}</li>`).join(''):'';
-  const firmaImg=r.firma?`<img src="${r.firma}" style="max-width:240px;max-height:90px;display:block;margin:0 auto 4px">`:'';
+  const firmaImg=r.firma?`<img src="${r.firma}" style="max-width:240px;max-height:90px;display:block;margin:0 auto 4px">`:'<div style="color:#999;font-size:12px;margin-bottom:4px">(non firmato)</div>';
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Rapportino ${d}</title>
 <style>
@@ -2672,7 +2674,6 @@ async function stampaRapportino(){
 
 function ensureRappValido(){
   if(!document.getElementById('mr-commessa').value){alert('Seleziona una commessa');return false;}
-  if(!state.firmaData){alert('La firma del cliente è obbligatoria.');return false;}
   return true;
 }
 
@@ -2699,7 +2700,7 @@ function buildRapportinoTesto(r){
   txt+=`\n*Attività svolte:*\n${att}\n`;
   txt+=`\n*Materiali utilizzati:*\n${mat}\n`;
   if(r.note)txt+=`\n*Note:* ${r.note}\n`;
-  txt+=`\n✍️ Firma cliente acquisita${r.firma?' ✓':''}.`;
+  txt+=`\n✍️ Firma cliente ${r.firma?'acquisita ✓':'non acquisita'}.`;
   txt+=`\n(PDF con firma allegato a parte tramite "Condividi file".)`;
   return txt;
 }
