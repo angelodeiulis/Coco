@@ -631,6 +631,7 @@ textarea{resize:vertical;min-height:60px;}
 
 <div class="app-header" id="cf-header" style="display:none">
   <div class="logo">Co<span>.</span>Co<span>.</span></div>
+  <span id="app-ver-cf" style="font-size:9px;color:var(--text3);align-self:flex-start;margin:6px 0 0 1px"></span>
   <div class="hdr-title" id="cf-hdr-title">Oggi</div>
   <div class="hdr-user" id="hdr-user" onclick="openUserMenu()">
     <div class="hdr-av" id="hdr-av"></div>
@@ -761,6 +762,7 @@ textarea{resize:vertical;min-height:60px;}
 
 <div class="app-header">
   <div class="logo">Co<span>.</span>Co<span>.</span></div>
+  <span id="app-ver" style="font-size:9px;color:var(--text3);align-self:flex-start;margin:6px 0 0 1px"></span>
   <span id="hdr-curuser" style="font-size:11px;color:var(--accent,#4f9cf9);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:96px"></span>
   <div class="hdr-title" id="hdr-title">Lavori</div>
   <button class="hbtn" id="hdr-add-btn" onclick="openModalCommessa()">＋</button>
@@ -1219,6 +1221,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
+const APP_VERSION='37';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -1529,6 +1532,7 @@ function currentTec(){return getTecnico(state.currentTecnicoId);}
 function cf_setViewTitle(v){
   const titles={oggi:'Oggi',presenze:'Presenze',rapportini:'Rapportini',lavori:'Lavori'};
   const el=document.getElementById('cf-hdr-title');
+  const _vc=document.getElementById('app-ver-cf'); if(_vc)_vc.textContent='v'+APP_VERSION;
   if(el)el.textContent=titles[v]||v;
 }
 
@@ -2676,6 +2680,7 @@ if(state.currentTecnicoId&&getTecnico(state.currentTecnicoId)){
 setTimeout(()=>{try{maybeAutoBackupOnOpen();}catch(e){console.warn(e);}},800);
 
 function renderAll(){
+  const _v=document.getElementById('app-ver'); if(_v&&!_v.textContent)_v.textContent='v'+APP_VERSION;
   const _cu=document.getElementById('hdr-curuser'); if(_cu){const _ct=(typeof currentTec==='function')?currentTec():null; _cu.textContent=_ct?('· '+_ct.nome):'';}
   renderCommesse();
   updateAgendaBadge();
