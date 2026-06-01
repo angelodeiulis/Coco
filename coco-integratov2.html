@@ -1221,7 +1221,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='39';
+const APP_VERSION='41';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -1335,6 +1335,125 @@ function condividiDaOrdinare(){
     }).join('\n');
   }).join('\n\n');
   chiediAClaude(t,{});
+}
+/* ── DISEGNI di commessa (foto compresse) ── */
+function compressImage(file,maxSize,quality,cb){
+  const img=new Image(); const rd=new FileReader();
+  rd.onload=e=>{ img.onload=()=>{ let w=img.width,h=img.height; if(w>h){if(w>maxSize){h=Math.round(h*maxSize/w);w=maxSize;}}else{if(h>maxSize){w=Math.round(w*maxSize/h);h=maxSize;}} const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);try{cb(cv.toDataURL('image/jpeg',quality));}catch(err){alert('Immagine non valida.');} }; img.onerror=()=>alert('Immagine non leggibile.'); img.src=e.target.result; };
+  rd.readAsDataURL(file);
+}
+function apriDisegni(cid){
+  const c=getCommessa(cid); if(!c)return; c.disegni=c.disegni||[];
+  const head=`<label style="display:block;width:100%;padding:12px;border:1px dashed var(--border);border-radius:10px;color:var(--accent,#4f9cf9);font-size:14px;text-align:center;margin-bottom:12px;cursor:pointer">📷 Aggiungi disegno / foto<input type="file" accept="image/*" onchange="addDisegno('${cid}',this)" style="display:none"></label>`;
+  let body;
+  if(!c.disegni.length){ body='<div class="empty-state" style="padding:18px 10px"><div class="empty-big">📐</div>Nessun disegno.</div>'; }
+  else { body='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+c.disegni.map(d=>`<div style="background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+     <img src="${d.img}" onclick="viewDisegno('${cid}','${d.id}')" style="width:100%;height:110px;object-fit:cover;display:block;cursor:pointer">
+     <div style="padding:6px 8px;display:flex;align-items:center;gap:6px"><span style="flex:1;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.titolo||'—')}</span><span onclick="eliminaDisegno('${cid}','${d.id}')" style="color:#ef4444;cursor:pointer">🗑</span></div>
+   </div>`).join('')+'</div>'; }
+  document.body.appendChild(_bfOv('dis-ov','📐 Disegni — '+esc(c.nome),head+body));
+}
+function addDisegno(cid,input){
+  const file=input.files&&input.files[0]; if(!file)return;
+  const titolo=(prompt('Titolo del disegno (es. Pianta P.T., Schema quadro):','')||'').trim();
+  compressImage(file,1280,.6,(dataUrl)=>{
+    const c=getCommessa(cid); if(!c)return; c.disegni=c.disegni||[];
+    c.disegni.push({id:'dis'+Date.now(),titolo:titolo||('Disegno '+(c.disegni.length+1)),img:dataUrl,data:fmt(today())});
+    save(); apriDisegni(cid);
+  });
+}
+function viewDisegno(cid,did){ const c=getCommessa(cid);const d=(c.disegni||[]).find(x=>x.id===did);if(!d)return;
+  const ov=document.createElement('div');ov.id='dis-view';ov.style.cssText='position:fixed;inset:0;z-index:340;background:rgba(0,0,0,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px';
+  ov.onclick=()=>ov.remove();
+  ov.innerHTML=`<div style="color:#fff;font-weight:600;margin-bottom:10px;text-align:center">${esc(d.titolo||'')}<div style="color:#9aa;font-size:12px">${_bfData(d.data)}</div></div><img src="${d.img}" style="max-width:100%;max-height:78vh;object-fit:contain;border-radius:8px"><div style="color:#778;font-size:12px;margin-top:10px">Tocca per chiudere</div>`;
+  document.body.appendChild(ov);
+}
+function eliminaDisegno(cid,did){ if(!confirm('Eliminare questo disegno?'))return; const c=getCommessa(cid);if(!c)return;c.disegni=(c.disegni||[]).filter(x=>x.id!==did);save();apriDisegni(cid); }
+
+/* ── COMPUTI di commessa ── */
+function apriComputiCommessa(cid){
+  const c=getCommessa(cid); if(!c)return;
+  const list=(state.computi||[]).filter(x=>x.commessaId===cid);
+  const head=`<button onclick="document.getElementById('cmc-ov').remove();openModalComputo('${cid}')" style="width:100%;padding:12px;border:none;border-radius:10px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;margin-bottom:12px;font-family:inherit">➕ Nuovo computo</button>`;
+  let body;
+  if(!list.length){ body='<div class="empty-state" style="padding:18px 10px"><div class="empty-big">💶</div>Nessun computo per questo lavoro.</div>'; }
+  else { body='<div class="card"><div class="inner-list">'+list.map(cp=>{ const tot=(cp.voci||[]).reduce((s,v)=>s+Number(v.importo||0),0);
+     return `<div class="row-item" onclick="document.getElementById('cmc-ov').remove();editComputo('${cp.id}')"><div class="ri" style="flex:1"><div class="ri-nome">${esc(cp.oggetto||cp.numero||'Computo')}</div><div class="ri-meta">${cp.numero?('N° '+esc(cp.numero)+' · '):''}${(cp.voci||[]).length} voci${cp.data?(' · '+_bfData(cp.data)):''}</div></div><span style="font-family:var(--mono);color:var(--accent);font-weight:700">€ ${tot.toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>`;
+   }).join('')+'</div></div>'; }
+  document.body.appendChild(_bfOv('cmc-ov','💶 Computi — '+esc(c.nome),head+body));
+}
+
+/* ── MAGAZZINO DI CANTIERE (per commessa, con storico) ── */
+function magCantiereStock(cid){ const c=getCommessa(cid); const agg={}; ((c&&c.movMag)||[]).forEach(mv=>{ const seg=(mv.tipo==='arrivo'||mv.tipo==='trasf-in')?1:-1; agg[mv.articoloId]=(agg[mv.articoloId]||0)+seg*(parseFloat(mv.qty)||0); }); return agg; }
+function apriMagCantiere(cid){
+  const c=getCommessa(cid); if(!c)return; c.movMag=c.movMag||[];
+  const head=`<div style="display:flex;gap:8px;margin-bottom:12px"><button onclick="document.getElementById('magc-ov').remove();arrivoCantiere('${cid}')" style="flex:1;padding:11px;border:none;border-radius:10px;background:rgba(34,197,94,.15);color:#22c55e;font-weight:700;font-size:13px;font-family:inherit">📥 Arrivo a cantiere</button><button onclick="document.getElementById('magc-ov').remove();usoCantiere('${cid}')" style="flex:1;padding:11px;border:none;border-radius:10px;background:rgba(245,158,11,.15);color:#f59e0b;font-weight:700;font-size:13px;font-family:inherit">📤 Uso / Scarico</button></div>`;
+  const stock=magCantiereStock(cid);
+  const arts=Object.keys(stock).filter(id=>getMateriale(id)).sort((a,b)=>matEtichetta(getMateriale(a)).localeCompare(matEtichetta(getMateriale(b))));
+  let body;
+  if(!arts.length){ body='<div class="empty-state" style="padding:18px 10px"><div class="empty-big">🏗️</div>Nessun materiale in questo cantiere.</div>'; }
+  else { body='<div class="card"><div class="inner-list">'+arts.map(id=>{const m=getMateriale(id);const q=stock[id];return `<div class="row-item"><div class="ri" style="flex:1"><div class="ri-nome">${esc(matEtichetta(m))}</div></div><span style="font-family:var(--mono);font-weight:700;color:${q>0?'#22c55e':'var(--text3)'}">${q} ${m.unita}</span></div>`;}).join('')+'</div></div>'; }
+  const movs=(c.movMag||[]).slice().sort((a,b)=>(b.quando||0)-(a.quando||0)).slice(0,40);
+  const sto=movs.length?('<div style="font-size:12px;font-weight:700;color:var(--text2);margin:14px 0 6px">📜 Storico movimenti</div>'+movs.map(mv=>{const m=getMateriale(mv.articoloId);const inb=(mv.tipo==='arrivo'||mv.tipo==='trasf-in');const seg=inb?'+':'−';const col=inb?'#22c55e':'#f59e0b';return `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px"><span style="font-family:var(--mono);font-weight:700;color:${col};min-width:40px">${seg}${mv.qty}</span><span style="flex:1;color:var(--text2)">${m?esc(matEtichetta(m)):'(eliminato)'}<div style="color:var(--text3);font-size:10px;margin-top:1px">${_bfData(mv.data)} · ${esc(mv.autore||'—')}${mv.nota?(' · '+esc(mv.nota)):''}</div></span></div>`;}).join('')):'';
+  document.body.appendChild(_bfOv('magc-ov','🏗️ Magazzino cantiere — '+esc(c.nome),head+body+sto));
+}
+function arrivoCantiere(cid){
+  const cats=catCategorie(); if(!cats.length){alert('Catalogo vuoto: carica prima i materiali.');return;}
+  const ss='width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:10px;font-size:15px;font-family:inherit';
+  const altri=state.commesse.filter(x=>x.id!==cid);
+  const inner=`<div style="display:flex;flex-direction:column;gap:8px">
+    <div><label style="font-size:11px;color:var(--text3)">Categoria</label><select id="mc-cat" onchange="mcFillTip()" style="${ss}">${cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></div>
+    <div><label style="font-size:11px;color:var(--text3)">Tipologia</label><select id="mc-tip" onchange="mcFillVar()" style="${ss}"></select></div>
+    <div><label style="font-size:11px;color:var(--text3)">Variante / misura</label><select id="mc-var" style="${ss}"></select></div>
+    <div><label style="font-size:11px;color:var(--text3)">Quantità</label><input type="number" id="mc-qta" min="0" value="1" style="${ss}"></div>
+    <div><label style="font-size:11px;color:var(--text3)">Data</label><input type="date" id="mc-data" value="${fmt(today())}" style="${ss}"></div>
+    <div><label style="font-size:11px;color:var(--text3)">Provenienza</label><select id="mc-prov" onchange="mcProvChange()" style="${ss}"><option value="fornitore">🏢 Da fornitore</option><option value="centrale">🏬 Dal magazzino centrale</option><option value="cantiere">🏗️ Da altro cantiere</option></select></div>
+    <div id="mc-forn-wrap"><label style="font-size:11px;color:var(--text3)">Fornitore</label><input type="text" id="mc-forn" style="${ss}"></div>
+    <div id="mc-cant-wrap" style="display:none"><label style="font-size:11px;color:var(--text3)">Cantiere di provenienza</label><select id="mc-cant" style="${ss}">${altri.map(x=>`<option value="${x.id}">${esc(x.nome)}</option>`).join('')||'<option value="">(nessuno)</option>'}</select></div>
+    <input type="text" id="mc-nota" placeholder="Nota (n° bolla/DDT) opzionale" style="${ss}">
+    <button onclick="arrivoCantiereConf('${cid}')" style="width:100%;padding:13px;border:none;border-radius:10px;background:rgba(34,197,94,.9);color:#04210f;font-weight:800;font-size:15px;font-family:inherit;margin-top:4px">📥 Registra arrivo</button>
+  </div>`;
+  document.body.appendChild(_bfOv('arrc-ov','📥 Arrivo a cantiere',inner));
+  mcFillTip();
+}
+function mcFillTip(){const cat=document.getElementById('mc-cat').value;document.getElementById('mc-tip').innerHTML=catTipologie(cat).map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');mcFillVar();}
+function mcFillVar(){const cat=document.getElementById('mc-cat').value,tip=document.getElementById('mc-tip').value;document.getElementById('mc-var').innerHTML=catVarianti(cat,tip).map(m=>`<option value="${m.id}">${esc(m.variante||m.nome)}</option>`).join('');}
+function mcProvChange(){const p=document.getElementById('mc-prov').value;document.getElementById('mc-forn-wrap').style.display=p==='fornitore'?'block':'none';document.getElementById('mc-cant-wrap').style.display=p==='cantiere'?'block':'none';}
+function arrivoCantiereConf(cid){
+  const c=getCommessa(cid); if(!c)return; c.movMag=c.movMag||[];
+  const id=document.getElementById('mc-var').value; if(!id){alert('Scegli un articolo.');return;}
+  const qty=parseFloat(document.getElementById('mc-qta').value)||0; if(qty<=0){alert('Quantità non valida.');return;}
+  const data=document.getElementById('mc-data').value||fmt(today());
+  const prov=document.getElementById('mc-prov').value; const t=(typeof currentTec==='function')?currentTec():null;
+  let nota='', tipo='arrivo';
+  if(prov==='fornitore'){const f=document.getElementById('mc-forn').value.trim();nota='da fornitore'+(f?(' '+f):'');}
+  else if(prov==='centrale'){nota='dal magazzino centrale';tipo='trasf-in';registraMovimento(id,'scarico',qty,'→ cantiere '+c.nome,data);}
+  else{const o=getCommessa(document.getElementById('mc-cant').value);nota='da cantiere '+(o?o.nome:'?');tipo='trasf-in';if(o){o.movMag=o.movMag||[];o.movMag.push({id:'mc'+Date.now()+'b',quando:Date.now(),data,articoloId:id,tipo:'trasf-out',qty,autore:(t&&t.nome)||'—',nota:'→ cantiere '+c.nome});}}
+  const extra=document.getElementById('mc-nota').value.trim(); if(extra)nota+=' · '+extra;
+  c.movMag.push({id:'mc'+Date.now(),quando:Date.now(),data,articoloId:id,tipo,qty,autore:(t&&t.nome)||'—',nota});
+  save(); const ov=document.getElementById('arrc-ov');if(ov)ov.remove(); apriMagCantiere(cid);
+}
+function usoCantiere(cid){
+  const c=getCommessa(cid); if(!c)return; c.movMag=c.movMag||[];
+  const stock=magCantiereStock(cid); const arts=Object.keys(stock).filter(id=>getMateriale(id)&&stock[id]>0);
+  if(!arts.length){alert('Nessun materiale disponibile in questo cantiere.');return;}
+  const ss='width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:10px;font-size:15px;font-family:inherit';
+  const inner=`<div style="display:flex;flex-direction:column;gap:8px">
+    <div><label style="font-size:11px;color:var(--text3)">Articolo</label><select id="uc-art" style="${ss}">${arts.map(id=>{const m=getMateriale(id);return `<option value="${id}">${esc(matEtichetta(m))} (disp. ${stock[id]} ${m.unita})</option>`;}).join('')}</select></div>
+    <div><label style="font-size:11px;color:var(--text3)">Quantità usata</label><input type="number" id="uc-qta" min="0" value="1" style="${ss}"></div>
+    <div><label style="font-size:11px;color:var(--text3)">Data</label><input type="date" id="uc-data" value="${fmt(today())}" style="${ss}"></div>
+    <input type="text" id="uc-nota" placeholder="Nota (es. fase/posizione) opzionale" style="${ss}">
+    <button onclick="usoCantiereConf('${cid}')" style="width:100%;padding:13px;border:none;border-radius:10px;background:rgba(245,158,11,.9);color:#2a1700;font-weight:800;font-size:15px;font-family:inherit;margin-top:4px">📤 Registra uso</button>
+  </div>`;
+  document.body.appendChild(_bfOv('usoc-ov','📤 Uso materiale — '+esc(c.nome),inner));
+}
+function usoCantiereConf(cid){
+  const c=getCommessa(cid); if(!c)return; c.movMag=c.movMag||[];
+  const id=document.getElementById('uc-art').value; const qty=parseFloat(document.getElementById('uc-qta').value)||0; if(qty<=0){alert('Quantità non valida.');return;}
+  const data=document.getElementById('uc-data').value||fmt(today());
+  const extra=document.getElementById('uc-nota').value.trim(); const t=(typeof currentTec==='function')?currentTec():null;
+  c.movMag.push({id:'uc'+Date.now(),quando:Date.now(),data,articoloId:id,tipo:'uso',qty,autore:(t&&t.nome)||'—',nota:extra});
+  save(); const ov=document.getElementById('usoc-ov');if(ov)ov.remove(); apriMagCantiere(cid);
 }
 function arrivoMateriale(){
   const cats=catCategorie();
@@ -2730,6 +2849,9 @@ function renderCommesse(){
         <div class="c-prog"><div class="c-prog-fill" style="width:${pct}%;background:${c.colore}"></div></div>
       </div>
       <div class="c-acts" onclick="event.stopPropagation()">
+        <button class="ico-btn" onclick="apriDisegni('${c.id}')" title="Disegni">📐</button>
+        <button class="ico-btn" onclick="apriComputiCommessa('${c.id}')" title="Computi metrici">💶</button>
+        <button class="ico-btn" onclick="apriMagCantiere('${c.id}')" title="Magazzino di cantiere">🏗️</button>
         <button class="ico-btn" onclick="apriBriefing('${c.id}')" title="Briefing operativo">📋</button>
         <button class="ico-btn" onclick="openModalFase('${c.id}')">＋</button>
         <button class="ico-btn" onclick="editCommessa('${c.id}')">✎</button>
@@ -3758,6 +3880,29 @@ function buildAgendaEvents(){
           actions:[{label:'Assegna',action:`editFase('${c.id}','${f.id}')`,primary:true}]});
       }
     });
+
+    // Rapportino giornaliero (lun–ven): se una fase è attiva oggi con tecnici e nessuno l'ha ancora registrato
+    const dow=todayD.getDay();
+    if(dow!==0 && dow!==6){
+      const fasiOggi=(c.fasi||[]).filter(f=>{
+        if(f.stato==='completata')return false;
+        if(!(f.tecnici||[]).length)return false;
+        const inRange=f.inizio&&f.fine&&parseDate(f.inizio)<=todayD&&todayD<=parseDate(f.fine);
+        return inRange||f.stato==='corso';
+      });
+      if(fasiOggi.length){
+        const tecIds=[...new Set(fasiOggi.flatMap(f=>f.tecnici))];
+        const fatto=(state.rapportini||[]).some(r=>r.data===tStr&&r.commessaId===c.id&&(tecIds.includes(r.operatore)||(r.tecniciIds||[]).some(id=>tecIds.includes(id))));
+        if(!fatto){
+          const nomi=tecIds.map(id=>{const t=getTecnico(id);return t?t.nome.split(' ')[0]:null;}).filter(Boolean);
+          events.push({id:'auto-rapp-'+c.id,auto:true,tipo:'rapportino',prio:'attenzione',noDismiss:true,
+            icona:'📝',titolo:`Rapportino da compilare: ${c.nome}`,
+            meta:[fasiOggi.map(f=>f.nome).join(', '),nomi.length?('👤 '+nomi.join(', ')):'—'],
+            dataKey:tStr,sortKey:-50,commessaId:c.id,faseId:fasiOggi[0].id,whenLabel:'OGGI',
+            actions:[{label:'Compila',action:`openModalRapportino('${c.id}')`,primary:true}]});
+        }
+      }
+    }
 
     if(!(c.fasi||[]).length){
       events.push({id:'auto-nofasi-'+c.id,auto:true,tipo:'coord',prio:'attenzione',
