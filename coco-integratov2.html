@@ -1313,6 +1313,40 @@ function condividiDaOrdinare(){
   }).join('\n\n');
   chiediAClaude(t,{});
 }
+function arrivoMateriale(){
+  const cats=catCategorie();
+  if(!cats.length){alert('Catalogo vuoto: carica prima i materiali.');return;}
+  const ss='width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:10px;font-size:15px;font-family:inherit';
+  const inner=`<div style="display:flex;flex-direction:column;gap:8px">
+    <div><label style="font-size:11px;color:var(--text3)">Categoria</label><select id="am-cat" onchange="amFillTip()" style="${ss}">${cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></div>
+    <div><label style="font-size:11px;color:var(--text3)">Tipologia</label><select id="am-tip" onchange="amFillVar()" style="${ss}"></select></div>
+    <div><label style="font-size:11px;color:var(--text3)">Variante / misura</label><select id="am-var" onchange="amPrefForn()" style="${ss}"></select></div>
+    <div><label style="font-size:11px;color:var(--text3)">Quantità in arrivo</label><input type="number" id="am-qta" min="0" value="1" style="${ss}"></div>
+    <div><label style="font-size:11px;color:var(--text3)">Provenienza</label><select id="am-prov" onchange="amProvChange()" style="${ss}"><option value="fornitore">🏢 Da fornitore</option><option value="cantiere">🏗️ Da altro cantiere</option></select></div>
+    <div id="am-forn-wrap"><label style="font-size:11px;color:var(--text3)">Fornitore</label><input type="text" id="am-forn" placeholder="es. Rexel, Sonepar…" style="${ss}"></div>
+    <div id="am-cant-wrap" style="display:none"><label style="font-size:11px;color:var(--text3)">Cantiere di provenienza</label><select id="am-cant" style="${ss}">${state.commesse.map(c=>`<option value="${c.id}">${esc(c.nome)}</option>`).join('')||'<option value="">(nessun cantiere)</option>'}</select></div>
+    <input type="text" id="am-nota" placeholder="Nota (n° bolla, DDT…) opzionale" style="${ss}">
+    <button onclick="arrivoConferma()" style="width:100%;padding:13px;border:none;border-radius:10px;background:rgba(34,197,94,.9);color:#04210f;font-weight:800;font-size:15px;font-family:inherit;margin-top:4px">📥 Registra arrivo</button>
+  </div>`;
+  const old=document.getElementById('arrivo-ov');if(old)old.remove();
+  document.body.appendChild(_bfOv('arrivo-ov','📥 Arrivo materiale',inner));
+  amFillTip();
+}
+function amFillTip(){const cat=document.getElementById('am-cat').value;document.getElementById('am-tip').innerHTML=catTipologie(cat).map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');amFillVar();}
+function amFillVar(){const cat=document.getElementById('am-cat').value,tip=document.getElementById('am-tip').value;document.getElementById('am-var').innerHTML=catVarianti(cat,tip).map(m=>`<option value="${m.id}">${esc(m.variante||m.nome)}</option>`).join('');amPrefForn();}
+function amPrefForn(){const m=getMateriale(document.getElementById('am-var').value);const f=document.getElementById('am-forn');if(m&&f){f.value=m.fornitore||'';}}
+function amProvChange(){const p=document.getElementById('am-prov').value;document.getElementById('am-forn-wrap').style.display=p==='fornitore'?'block':'none';document.getElementById('am-cant-wrap').style.display=p==='cantiere'?'block':'none';}
+function arrivoConferma(){
+  const id=document.getElementById('am-var').value;if(!id){alert('Scegli un articolo.');return;}
+  const qty=parseFloat(document.getElementById('am-qta').value)||0;if(qty<=0){alert('Quantità non valida.');return;}
+  const prov=document.getElementById('am-prov').value; let nota='';
+  if(prov==='fornitore'){const f=document.getElementById('am-forn').value.trim();nota='da fornitore'+(f?(' '+f):'');const m=getMateriale(id);if(f&&m&&!m.fornitore)m.fornitore=f;}
+  else{const c=getCommessa(document.getElementById('am-cant').value);nota='da cantiere '+(c?c.nome:'?');}
+  const extra=document.getElementById('am-nota').value.trim(); if(extra)nota+=' · '+extra;
+  registraMovimento(id,'carico',qty,nota);
+  const ov=document.getElementById('arrivo-ov');if(ov)ov.remove();
+  apriMagazzino('sto');
+}
 function apriMagazzino(tab){
   tab=tab||'mag';
   const arts=state.materiali.slice().sort((a,b)=>matEtichetta(a).localeCompare(matEtichetta(b)));
@@ -1345,7 +1379,8 @@ function apriMagazzino(tab){
       <div class="ri-meta" style="margin-top:2px">${_bfData(mv.data)} · 👤 ${esc(mv.autore||'—')}${mv.nota?(' · '+esc(mv.nota)):''}</div></div>
       <span style="font-family:var(--mono);font-weight:700;color:${mv.tipo==='carico'?'#22c55e':(mv.tipo==='scarico'?'#f59e0b':'var(--text2)')}">${_movLbl(mv)}${m?(' '+m.unita):''}</span></div>`;}).join('')+'</div></div>'; }
   const tb=(id,lbl)=>`<button onclick="apriMagazzino('${id}')" style="flex:1;padding:9px 4px;border:none;border-radius:9px;font-weight:700;font-size:12px;font-family:inherit;${tab===id?'background:var(--accent2,#2563eb);color:#fff':'background:var(--surface2,#1c2030);color:var(--text2)'}">${lbl}</button>`;
-  const inner=`<div style="display:flex;gap:6px;margin-bottom:12px">${tb('mag','📦 Magazzino')}${tb('ord','🛒 Da ordinare ('+ord.length+')')}${tb('sto','📜 Storico')}</div>`+
+  const inner=`<div style="display:flex;gap:6px;margin-bottom:10px">${tb('mag','📦 Magazzino')}${tb('ord','🛒 Da ordinare ('+ord.length+')')}${tb('sto','📜 Storico')}</div>`+
+    `<button onclick="arrivoMateriale()" style="width:100%;padding:11px;border:none;border-radius:10px;background:rgba(34,197,94,.15);color:#22c55e;font-weight:700;font-size:13px;font-family:inherit;margin-bottom:12px">📥 Arrivo materiale (da fornitore o altro cantiere)</button>`+
     (tab==='ord'?ordBody:(tab==='sto'?stoBody:magBody))+
     (tab==='mag'?`<div style="display:flex;gap:8px;margin-top:10px"><button onclick="document.getElementById('mag-ov').remove();caricaMateriali()" style="flex:1;padding:10px;border:none;border-radius:9px;background:var(--surface2,#1c2030);color:var(--accent);font-size:12px;font-family:inherit">📥 Carica catalogo</button><button onclick="document.getElementById('mag-ov').remove();openModalMateriale()" style="flex:1;padding:10px;border:none;border-radius:9px;background:var(--surface2,#1c2030);color:var(--accent);font-size:12px;font-family:inherit">➕ Nuovo articolo</button></div>`:'');
   const old=document.getElementById('mag-ov'); if(old)old.remove();
