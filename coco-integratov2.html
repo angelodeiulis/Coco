@@ -1221,7 +1221,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='41';
+const APP_VERSION='42';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -2413,7 +2413,7 @@ function editRapportino(id){
   //     allow update,delete: if request.auth.uid == resource.data.operatore
   //                          || get(.../tecnici/$(request.auth.uid)).data.ruolo == 'ufficio';
   //   }
-  const owner = r.operatore===state.currentTecnicoId;
+  const owner = r.operatore===state.currentTecnicoId || ((typeof isUfficio==='function')&&isUfficio(currentTec()));
   state.editingRapportinoId=id;
   state.rappReadOnly=!owner;
   document.getElementById('mr-title').textContent=owner?'Modifica Rapportino':'Rapportino (sola lettura)';
@@ -2788,6 +2788,7 @@ function cf_renderLavori(){
         <div style="display:flex;gap:8px;margin-top:8px">
           <button onclick="editFase('${c.id}','${f.id}')" style="flex:1;padding:9px;border:none;border-radius:9px;background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-size:13px;font-weight:600;font-family:inherit">📦 Materiali (${nMat})</button>
           <button onclick="apriBriefing('${c.id}','${f.id}')" style="flex:1;padding:9px;border:none;border-radius:9px;background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-size:13px;font-weight:600;font-family:inherit">📋 Briefing</button>
+          <button onclick="apriRapportiniFase('${c.id}')" style="flex:1;padding:9px;border:none;border-radius:9px;background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-size:13px;font-weight:600;font-family:inherit">📝 Rapportini</button>
         </div></div>`;
     });
     html+='</div>';
@@ -3438,6 +3439,31 @@ function renderReportFinale(){
 
 function renderReport(){renderReportTab();}
 
+// ── RAPPORTINI per commessa/fase ──
+function _rappCanEdit(r){const cur=(typeof currentTec==='function')?currentTec():null;return !!(cur&&(isUfficio(cur)||r.operatore===cur.id));}
+function apriRapportiniFase(cid){
+  const c=getCommessa(cid); if(!c)return;
+  const rapps=(state.rapportini||[]).filter(r=>r.commessaId===cid).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+  let body;
+  if(!rapps.length){ body='<div class="empty-state" style="padding:18px 10px"><div class="empty-big">📝</div>Nessun rapportino per questo lavoro.</div>'; }
+  else { body='<div class="card"><div class="inner-list">'+rapps.map(r=>{const cre=r.operatore?getTecnico(r.operatore):null;const ed=_rappCanEdit(r);return `<div class="row-item" onclick="apriRapportinoDaFase('${r.id}')">
+      <div class="ri" style="flex:1"><div class="ri-nome">${_bfData(r.data)} · 👤 ${cre?esc(cre.nome):'—'}</div>
+      <div class="ri-meta">${esc(r.stato||'bozza')}${ed?' · ✎ puoi modificarlo':' · 🔒 solo lettura'}</div></div>
+      <span style="color:var(--text3)">›</span></div>`;}).join('')+'</div></div>'; }
+  document.body.appendChild(_bfOv('rappf-ov','📝 Rapportini — '+esc(c.nome),body));
+}
+function apriRapportinoDaFase(id){
+  const r=(state.rapportini||[]).find(x=>x.id===id); if(!r)return;
+  if(_rappCanEdit(r)){ const ov=document.getElementById('rappf-ov');if(ov)ov.remove(); closeSheet('sheet-fase'); editRapportino(id); return; }
+  const cre=r.operatore?getTecnico(r.operatore):null;
+  const sq=(r.tecniciIds||[]).map(tid=>{const t=getTecnico(tid);return t?esc(t.nome):null;}).filter(Boolean).join(', ')||'—';
+  const sec=(lbl,val)=>val?`<div style="margin-top:10px"><div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">${lbl}</div><div style="font-size:13px;color:var(--text2);white-space:pre-wrap;margin-top:2px">${esc(val)}</div></div>`:'';
+  const inner=`<div style="font-size:12px;color:var(--text3)">${_bfData(r.data)} · 👤 ${cre?esc(cre.nome):'—'} · ${esc(r.stato||'bozza')}</div>`+
+    sec('Squadra',sq)+sec('Attività',r.attivita)+sec('Materiali',r.materiali)+sec('Note',r.note)+
+    `<div style="margin-top:12px;font-size:11px;color:var(--text3)">🔒 Solo ${cre?esc(cre.nome):'il creatore'} o l'ufficio possono modificare questo rapportino.</div>`;
+  document.body.appendChild(_bfOv('rappv-ov','📝 Rapportino',inner));
+}
+
 // ── FASE SHEET ──
 function selectFase(cid,fid){
   const c=getCommessa(cid),f=getFase(cid,fid);if(!c||!f)return;
@@ -3446,12 +3472,14 @@ function selectFase(cid,fid){
   const tecnici=(f.tecnici||[]).map(tid=>{const t=getTecnico(tid);return t?`<span class="chip" style="color:#4f9cf9;border-color:#4f9cf940">${t.nome}</span>`:null;}).filter(Boolean).join(' ')||'—';
   const materiali=(f.materiali||[]).map(({id,qty,marca,serie})=>{const m=getMateriale(id);if(!m)return null;const sp=splitLine(id,qty,cid,fid);const ico=sp.ordinare<=0?'✅ ':(sp.coperto<=0?'🛒 ':'◑ ');const split=(sp.coperto>0&&sp.ordinare>0)?` <span style="color:var(--text3);font-size:10px">(✅${sp.coperto} · 🛒${sp.ordinare})</span>`:'';const extra=[marca&&('Marca: '+esc(marca)),serie&&('S/N: '+esc(serie))].filter(Boolean).join(' · ');return`<div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px"><div style="display:flex;justify-content:space-between;align-items:center"><span>${ico}${esc(matEtichetta(m))}${split}</span><span style="font-family:var(--mono);color:var(--accent)">${qty} ${m.unita}</span></div>${extra?`<div style="font-size:10px;color:var(--text3);margin-top:2px">${extra}</div>`:''}</div>`;}).filter(Boolean).join('')||'<div style="font-size:12px;color:var(--text3)">Nessun materiale</div>';
 
+  const nRapp=(state.rapportini||[]).filter(r=>r.commessaId===cid).length;
   document.getElementById('sh-body').innerHTML=`
     <div class="sf-g"><div class="sf-lbl">Commessa</div><div style="display:flex;align-items:center;gap:6px"><span class="dot-sm" style="background:${c.colore}"></span><span>${c.nome}</span></div></div>
     <div class="sf-g"><div class="sf-lbl">Periodo</div><div style="font-size:14px">${fmtF(f.inizio)} → ${fmtF(f.fine)}</div><div style="font-size:12px;color:var(--text2);margin-top:2px">${dur} giorni lavorativi</div></div>
     <div class="sf-g"><div class="sf-lbl">Tecnici</div><div style="display:flex;flex-wrap:wrap;gap:4px">${tecnici}</div>${f.ditta?`<div style="font-size:12px;color:var(--text2);margin-top:4px">Ditta: ${f.ditta}</div>`:''}</div>
     <div class="sf-g"><div class="sf-lbl">Materiali</div>${materiali}${f.matMod?`<div style="font-size:10px;color:var(--text3);margin-top:6px;text-align:right">✎ aggiornati da ${esc(f.matMod.autore)} il ${_bfData(f.matMod.data)}</div>`:''}</div>
     ${f.note?`<div class="sf-g"><div class="sf-lbl">Note</div><div style="font-size:13px;color:var(--text2)">${f.note}</div></div>`:''}
+    <div class="sf-g"><div class="sf-lbl">Rapportini</div><button onclick="closeSheet('sheet-fase');apriRapportiniFase('${cid}')" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:9px;background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-size:13px;font-weight:600;font-family:inherit">📝 Rapportini (${nRapp})</button></div>
     <div class="sf-g"><div class="sf-lbl">Cambia stato</div><div class="stato-grid">${Object.entries(SL).map(([s,l])=>`<button class="stato-btn" onclick="setStatoFase('${cid}','${fid}','${s}')" style="color:${SC[s]};border-color:${SC[s]}40;background:${f.stato===s?SC[s]+'22':'transparent'}">${l}</button>`).join('')}</div></div>
     <div class="act-row">
       <button class="btn-main" onclick="closeSheet('sheet-fase');apriBriefing('${cid}','${fid}')">📋 Briefing</button>
