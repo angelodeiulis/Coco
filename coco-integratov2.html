@@ -1221,7 +1221,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='45';
+const APP_VERSION='47';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -1688,6 +1688,8 @@ function showAppFused(){
     document.querySelector('.content').style.display='';
     document.querySelector('.bottom-nav').style.display='flex';
     // mostra chi è loggato nel menu
+    const _vO=document.getElementById('app-ver'); if(_vO)_vO.textContent='v'+APP_VERSION;
+    const _cuO=document.getElementById('hdr-curuser'); if(_cuO)_cuO.textContent='· '+t.nome;
     if(typeof renderAll==='function')renderAll();
     setView('commesse',document.getElementById('nav-commesse'));
   }else{
@@ -2823,7 +2825,7 @@ setTimeout(()=>{try{maybeAutoBackupOnOpen();}catch(e){console.warn(e);}},800);
 
 function renderAll(){
   const _v=document.getElementById('app-ver'); if(_v&&!_v.textContent)_v.textContent='v'+APP_VERSION;
-  const _cu=document.getElementById('hdr-curuser'); if(_cu){const _ct=(typeof currentTec==='function')?currentTec():null; _cu.textContent=_ct?('· '+_ct.nome):'';}
+  const _cu=document.getElementById('hdr-curuser'); if(_cu){const _ct=(typeof currentTec==='function')?currentTec():null; if(_ct)_cu.textContent='· '+_ct.nome;}
   renderCommesse();
   updateAgendaBadge();
   if(state.activeView==='gantt')renderGantt();
@@ -3260,12 +3262,14 @@ function renderPresenze(){
   const tecs=[...tSet].map(id=>getTecnico(id)).filter(Boolean);
   if(!tecs.length){el.innerHTML=tb+'<div class="ts-day-card"><div class="ts-empty-day">Aggiungi tecnici in Risorse.</div></div>';return;}
   let body='';
+  const uffP=isUfficio(currentTec()); const meP=state.currentTecnicoId;
   tecs.forEach(t=>{
+    const puo=uffP||t.id===meP;
     const voci=tsForTecDay(t.id,ds).sort((a,b)=>(a.oraInizio||'').localeCompare(b.oraInizio||''));
     const tot=calcolaTotali(voci);
     const col=RUOLO_COLORS[t.ruolo]||'#64748b';
-    body+=`<div class="ts-day-card"><div class="ts-day-hdr"><div class="ts-day-hdr-left"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col};margin-right:6px"></span>${esc(t.nome)}<small>${t.ruolo}</small></div><div class="ts-day-tot">${tot.fatturabili>0?oreStr(tot.fatturabili)+' fatt.':''}</div></div><div class="ts-tec-section"><div class="ts-tec-name">Ore giornata<button class="ts-add-btn" onclick="openModalTs('${t.id}','${ds}')">+</button></div>`;
-    if(!voci.length){body+='<div class="ts-empty-day" style="padding:8px 0 4px">&#128203; Nessuna voce. Tocca + per aggiungere.</div>';}
+    body+=`<div class="ts-day-card"><div class="ts-day-hdr"><div class="ts-day-hdr-left"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col};margin-right:6px"></span>${esc(t.nome)}<small>${t.ruolo}</small></div><div class="ts-day-tot">${tot.fatturabili>0?oreStr(tot.fatturabili)+' fatt.':''}</div></div><div class="ts-tec-section"><div class="ts-tec-name">Ore giornata${puo?`<button class="ts-add-btn" onclick="openModalTs('${t.id}','${ds}')">+</button>`:''}</div>`;
+    if(!voci.length){body+='<div class="ts-empty-day" style="padding:8px 0 4px">&#128203; Nessuna voce.'+(puo?' Tocca + per aggiungere.':'')+'</div>';}
     else{
       voci.forEach(v=>{
         const cm=getCommessa(v.commessaId);
@@ -3273,7 +3277,7 @@ function renderPresenze(){
         const dur=durataMinuti(v.oraInizio,v.oraFine);
         const cLbl=v.tipo==='pausa'?'Pausa pranzo':(cm?cm.nome:'Generico');
         const sub=fz?fz.nome:(v.note||'');
-        body+=`<div class="ts-row" onclick="openModalTs('${t.id}','${ds}','${v.id}')"><div class="ts-tipo-dot" style="background:${TS_COLORS[v.tipo]}"></div><div class="ts-orario">${v.oraInizio||'?'}&#8211;${v.oraFine||'?'}</div><div class="ts-row-body"><div class="ts-row-title">${TS_ICONS[v.tipo]} ${esc(cLbl)}</div>${sub?`<div class="ts-row-sub">${esc(sub)}</div>`:''}</div><div class="ts-row-ore ${v.tipo}">${oreStr(dur)}</div></div>`;
+        body+=`<div class="ts-row"${puo?` onclick="openModalTs('${t.id}','${ds}','${v.id}')"`:' style="opacity:.85"'}><div class="ts-tipo-dot" style="background:${TS_COLORS[v.tipo]}"></div><div class="ts-orario">${v.oraInizio||'?'}&#8211;${v.oraFine||'?'}</div><div class="ts-row-body"><div class="ts-row-title">${TS_ICONS[v.tipo]} ${esc(cLbl)}</div>${sub?`<div class="ts-row-sub">${esc(sub)}</div>`:''}</div><div class="ts-row-ore ${v.tipo}">${oreStr(dur)}</div></div>`;
       });
       body+=`<div style="display:flex;gap:8px;padding:8px 0 4px;flex-wrap:wrap">${tot.lavoro?`<span style="font-size:11px;font-family:var(--mono);color:${TS_COLORS.lavoro}">&#128296; ${oreStr(tot.lavoro)}</span>`:''}${tot.viaggio?`<span style="font-size:11px;font-family:var(--mono);color:${TS_COLORS.viaggio}">&#128663; ${oreStr(tot.viaggio)}</span>`:''}${tot.pausa?`<span style="font-size:11px;font-family:var(--mono);color:${TS_COLORS.pausa}">&#9749; ${oreStr(tot.pausa)}</span>`:''}</div>`;
     }
@@ -3303,6 +3307,7 @@ function setTsViewDay(ds){state.tsDate=ds;state.tsView='day';renderPresenze();}
 
 function openModalTs(tecId,dateStr,voceId){
   const uff=isUfficio(currentTec());
+  if(voceId && !uff){ const vv=state.timesheets.find(x=>x.id===voceId); if(vv && vv.tecnicoId!==state.currentTecnicoId){ alert('Puoi modificare solo le tue ore.'); return; } }
   if(!uff) tecId=state.currentTecnicoId;   // un tecnico può inserire ore solo per sé
   state.editingTsId=voceId||null;
   const selT=document.getElementById('mts-tec');
@@ -3361,7 +3366,10 @@ function onTsCommessaChange(){
   if(cid)buildTsFasiSelect(cid,'');
 }
 function saveTsVoce(){
-  const tid=document.getElementById('mts-tec').value;
+  let tid=document.getElementById('mts-tec').value;
+  const uff=isUfficio(currentTec());
+  if(!uff) tid=state.currentTecnicoId;   // un tecnico salva solo le proprie ore
+  if(state.editingTsId && !uff){ const ex=state.timesheets.find(x=>x.id===state.editingTsId); if(ex && ex.tecnicoId!==state.currentTecnicoId){ alert('Puoi modificare solo le tue ore.'); return; } }
   const data=document.getElementById('mts-data').value;
   const tipo=document.getElementById('mts-tipo').value;
   const oraInizio=document.getElementById('mts-inizio').value;
@@ -3381,6 +3389,7 @@ function saveTsVoce(){
 }
 function deleteTsVoce(){
   if(!state.editingTsId)return;
+  if(!isUfficio(currentTec())){ const ex=state.timesheets.find(x=>x.id===state.editingTsId); if(ex && ex.tecnicoId!==state.currentTecnicoId){ alert('Puoi eliminare solo le tue ore.'); return; } }
   if(!confirm('Eliminare questa voce ore?'))return;
   state.timesheets=state.timesheets.filter(x=>x.id!==state.editingTsId);
   closeModal('modal-ts');save();renderReportTab();
@@ -5329,7 +5338,7 @@ function setView(v,btn){
   if(btn&&btn.classList.contains('nav-item'))btn.classList.add('active');
   const titles={commesse:'Lavori',agenda:'Agenda',gantt:'Gantt',risorse:'Risorse',report:'Report & Presenze',ai:'Coordinatore AI',backup:'Backup',computo:'Computi Metrici'};
   document.getElementById('hdr-title').textContent=titles[v]||v;
-  const _cu=document.getElementById('hdr-curuser'); if(_cu){const _ct=(typeof currentTec==='function')?currentTec():null; _cu.textContent=_ct?('· '+_ct.nome):'';}
+  const _cu=document.getElementById('hdr-curuser'); if(_cu){const _ct=(typeof currentTec==='function')?currentTec():null; if(_ct)_cu.textContent='· '+_ct.nome;}
   const hdrBtn=document.getElementById('hdr-add-btn');
   hdrBtn.style.display=(v==='risorse'||v==='commesse'||v==='computo')?'flex':'none';
   if(v==='risorse')hdrBtn.onclick=()=>openModalTecnico();
