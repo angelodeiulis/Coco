@@ -1209,6 +1209,7 @@ let state={
   promemoria:[],   // memoria operativa / promemoria vocali
   briefings:[],    // verbali/briefing operativi (più voci per lavoro)
   aiRisposte:[],   // risposte AI archiviate (data, autore, lavoro/fase)
+  movimenti:[],    // storico movimenti magazzino (carico/scarico)
   _aiCtx:null,     // contesto ultima domanda all'AI
 };
 let aiHistory=[];
@@ -1239,6 +1240,7 @@ function save(){
   localStorage.setItem('st_pm4',JSON.stringify(state.promemoria||[]));
   localStorage.setItem('st_bf4',JSON.stringify(state.briefings||[]));
   localStorage.setItem('st_ai4',JSON.stringify(state.aiRisposte||[]));
+  localStorage.setItem('st_mov4',JSON.stringify(state.movimenti||[]));
   localStorage.setItem('st_aictx',JSON.stringify(state._aiCtx||null));
 }
 function load(){
@@ -1258,6 +1260,7 @@ function load(){
     const pm=localStorage.getItem('st_pm4');if(pm)state.promemoria=JSON.parse(pm);
     const bf=localStorage.getItem('st_bf4');if(bf)state.briefings=JSON.parse(bf);
     const ai=localStorage.getItem('st_ai4');if(ai)state.aiRisposte=JSON.parse(ai);
+    const mv=localStorage.getItem('st_mov4');if(mv)state.movimenti=JSON.parse(mv);
     const aic=localStorage.getItem('st_aictx');if(aic)state._aiCtx=JSON.parse(aic);
     // migrate old
     if(!state.commesse.length){const oc=localStorage.getItem('sietel_commesse_v1')||localStorage.getItem('st_c3');if(oc){state.commesse=JSON.parse(oc);save();}}
@@ -1267,7 +1270,23 @@ function getFase(cid,fid){const c=state.commesse.find(x=>x.id===cid);return c?(c
 function getCommessa(id){return state.commesse.find(x=>x.id===id);}
 function getTecnico(id){return state.tecnici.find(x=>x.id===id);}
 function getMateriale(id){return state.materiali.find(x=>x.id===id);}
-function setScorta(id){const m=getMateriale(id);if(!m)return;const v=prompt('Scorta in magazzino ('+m.unita+'):',m.scorta||0);if(v===null)return;m.scorta=parseFloat(v)||0;save();if(typeof renderAll==='function')renderAll();if(typeof showMaterialeDetail==='function')showMaterialeDetail(id);}
+function setScorta(id){const m=getMateriale(id);if(!m)return;const v=prompt('Scorta in magazzino ('+m.unita+'):',m.scorta||0);if(v===null)return;const nuovo=parseFloat(v)||0;const delta=nuovo-(m.scorta||0);m.scorta=nuovo;const t=(typeof currentTec==='function')?currentTec():null;state.movimenti=state.movimenti||[];if(delta!==0)state.movimenti.push({id:'mv'+Date.now(),quando:Date.now(),data:fmt(today()),articoloId:id,tipo:'rettifica',qty:Math.abs(delta),verso:delta>0?'+':'-',autore:(t&&t.nome)||'—',nota:'rettifica scorta'});save();if(typeof renderAll==='function')renderAll();if(typeof showMaterialeDetail==='function')showMaterialeDetail(id);}
+function registraMovimento(id,tipo,qty,nota){
+  const m=getMateriale(id); if(!m)return;
+  qty=parseFloat(qty)||0; if(qty<=0){alert('Quantità non valida.');return;}
+  const t=(typeof currentTec==='function')?currentTec():null;
+  if(tipo==='carico') m.scorta=(m.scorta||0)+qty;
+  else if(tipo==='scarico') m.scorta=Math.max(0,(m.scorta||0)-qty);
+  state.movimenti=state.movimenti||[];
+  state.movimenti.push({id:'mv'+Date.now(),quando:Date.now(),data:fmt(today()),articoloId:id,tipo,qty,autore:(t&&t.nome)||'—',nota:nota||''});
+  save(); if(typeof renderAll==='function')renderAll();
+}
+function caricoArticolo(id){const q=prompt('CARICO — quantità da aggiungere al magazzino:');if(q===null)return;const n=(prompt('Nota (es. fornitore, n° bolla) — opzionale:','')||'').trim();registraMovimento(id,'carico',q,n);showMaterialeDetail(id);}
+function scaricoArticolo(id){const q=prompt('SCARICO — quantità da togliere dal magazzino:');if(q===null)return;const n=(prompt('Nota (es. lavoro/causale) — opzionale:','')||'').trim();registraMovimento(id,'scarico',q,n);showMaterialeDetail(id);}
+function setFornitore(id){const m=getMateriale(id);if(!m)return;const v=prompt('Fornitore per "'+matEtichetta(m)+'":',m.fornitore||'');if(v===null)return;m.fornitore=v.trim();save();if(typeof renderAll==='function')renderAll();showMaterialeDetail(id);}
+function movimentiArticolo(id){return (state.movimenti||[]).filter(x=>x.articoloId===id).sort((a,b)=>(b.quando||0)-(a.quando||0));}
+function _movIco(t){return t==='carico'?'📥':(t==='scarico'?'📤':'✏️');}
+function _movLbl(mv){const seg=(mv.tipo==='rettifica'?(mv.verso||'')+' ':'')+mv.qty;return _movIco(mv.tipo)+' '+seg;}
 function fabbisognoArticolo(id){
   let tot=0; const righe=[];
   state.commesse.forEach(c=>(c.fasi||[]).forEach(f=>(f.materiali||[]).forEach(u=>{
@@ -1285,10 +1304,13 @@ function materialiDaOrdinare(){
 function condividiDaOrdinare(){
   const list=materialiDaOrdinare();
   if(!list.length){ alert('Nessun materiale da ordinare.'); return; }
-  const t='LISTA MATERIALE DA ORDINARE\n\n'+list.map(o=>{
-    const chi=[...new Set(o.righe.map(r=>r.u.richiedente).filter(Boolean))].join(', ');
-    return `• ${matEtichetta(o.m)} — ${o.qty} ${o.m.unita} (magazzino: ${o.m.scorta||0})`+(chi?`\n   richiesto da: ${chi}`:'');
-  }).join('\n');
+  const gruppi={}; list.forEach(o=>{const f=(o.m.fornitore||'').trim()||'Senza fornitore'; (gruppi[f]=gruppi[f]||[]).push(o);});
+  const t='LISTA MATERIALE DA ORDINARE\n\n'+Object.keys(gruppi).sort().map(forn=>{
+    return 'FORNITORE: '+forn+'\n'+gruppi[forn].map(o=>{
+      const chi=[...new Set(o.righe.map(r=>r.u.richiedente).filter(Boolean))].join(', ');
+      return `• ${matEtichetta(o.m)} — ${o.qty} ${o.m.unita} (magazzino: ${o.m.scorta||0})`+(chi?` [rich: ${chi}]`:'');
+    }).join('\n');
+  }).join('\n\n');
   chiediAClaude(t,{});
 }
 function apriMagazzino(tab){
@@ -1299,22 +1321,32 @@ function apriMagazzino(tab){
   else { magBody='<div class="card"><div class="inner-list">'+arts.map(m=>{ const i=magInfo(m);
       return `<div class="row-item" onclick="document.getElementById('mag-ov').remove();showMaterialeDetail('${m.id}')" style="align-items:center">
         <div class="ri" style="flex:1"><div class="ri-nome">${esc(matEtichetta(m))}</div>
-        <div class="ri-meta" style="margin-top:2px">disp: <b style="color:${i.disponibile>0?'#22c55e':'var(--text3)'}">${i.disponibile} ${m.unita}</b> · scorta ${i.sc} · impegnato ${i.impegnato}</div></div>
+        <div class="ri-meta" style="margin-top:2px">disp: <b style="color:${i.disponibile>0?'#22c55e':'var(--text3)'}">${i.disponibile} ${m.unita}</b> · scorta ${i.sc} · impegnato ${i.impegnato}${m.fornitore?(' · 🏢 '+esc(m.fornitore)):''}</div></div>
         <span style="color:var(--text3)">›</span></div>`;
     }).join('')+'</div></div>'; }
   const ord=materialiDaOrdinare();
   let ordBody;
   if(!ord.length){ ordBody='<div class="empty-state" style="padding:20px 10px"><div class="empty-big">✅</div>Nessun materiale da ordinare.</div>'; }
-  else { ordBody='<div style="text-align:right;margin-bottom:8px"><button onclick="condividiDaOrdinare()" style="padding:8px 12px;border:none;border-radius:8px;background:var(--accent2,#2563eb);color:#fff;font-size:12px;font-weight:600;font-family:inherit">📤 Invia lista a Claude</button></div>'+
-    ord.map(o=>{
-      const dett=o.righe.map(r=>`<div style="font-size:11px;color:var(--text3);padding-left:6px;margin-top:2px">– ${esc(r.commessa.nome)}${r.fase.nome?(' › '+esc(r.fase.nome)):''} · ${r.u.qty} ${o.m.unita}${r.u.richiedente?(' · 👤 '+esc(r.u.richiedente)):''}</div>`).join('');
-      return `<div style="background:var(--bg);border:1px solid rgba(245,158,11,.35);border-radius:10px;padding:9px 11px;margin-bottom:8px">
-        <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:600;font-size:13px">${esc(matEtichetta(o.m))}</span><span style="font-family:var(--mono);color:#f59e0b;font-weight:700">${o.qty} ${o.m.unita}</span></div>
-        ${dett}</div>`;
-    }).join(''); }
-  const tb=(id,lbl)=>`<button onclick="apriMagazzino('${id}')" style="flex:1;padding:10px;border:none;border-radius:9px;font-weight:700;font-size:13px;font-family:inherit;${tab===id?'background:var(--accent2,#2563eb);color:#fff':'background:var(--surface2,#1c2030);color:var(--text2)'}">${lbl}</button>`;
-  const inner=`<div style="display:flex;gap:8px;margin-bottom:12px">${tb('mag','📦 In magazzino')}${tb('ord','🛒 Da ordinare ('+ord.length+')')}</div>`+
-    (tab==='ord'?ordBody:magBody)+
+  else {
+    const gruppi={}; ord.forEach(o=>{const f=(o.m.fornitore||'').trim()||'Senza fornitore'; (gruppi[f]=gruppi[f]||[]).push(o);});
+    ordBody='<div style="text-align:right;margin-bottom:8px"><button onclick="condividiDaOrdinare()" style="padding:8px 12px;border:none;border-radius:8px;background:var(--accent2,#2563eb);color:#fff;font-size:12px;font-weight:600;font-family:inherit">📤 Invia lista a Claude</button></div>'+
+    Object.keys(gruppi).sort().map(forn=>`<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;color:var(--accent,#4f9cf9);margin-bottom:5px">🏢 ${esc(forn)}</div>`+
+      gruppi[forn].map(o=>{
+        const dett=o.righe.map(r=>`<div style="font-size:11px;color:var(--text3);padding-left:6px;margin-top:2px">– ${esc(r.commessa.nome)}${r.fase.nome?(' › '+esc(r.fase.nome)):''} · ${r.u.qty} ${o.m.unita}${r.u.richiedente?(' · 👤 '+esc(r.u.richiedente)):''}</div>`).join('');
+        return `<div style="background:var(--bg);border:1px solid rgba(245,158,11,.35);border-radius:10px;padding:9px 11px;margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:600;font-size:13px">${esc(matEtichetta(o.m))}</span><span style="font-family:var(--mono);color:#f59e0b;font-weight:700">${o.qty} ${o.m.unita}</span></div>${dett}</div>`;
+      }).join('')+`</div>`).join('');
+  }
+  const movs=(state.movimenti||[]).slice().sort((a,b)=>(b.quando||0)-(a.quando||0)).slice(0,80);
+  let stoBody;
+  if(!movs.length){ stoBody='<div class="empty-state" style="padding:20px 10px"><div class="empty-big">📜</div>Nessun movimento registrato.</div>'; }
+  else { stoBody='<div class="card"><div class="inner-list">'+movs.map(mv=>{const m=getMateriale(mv.articoloId);return `<div class="row-item" style="align-items:center">
+      <div class="ri" style="flex:1"><div class="ri-nome" style="font-size:13px">${m?esc(matEtichetta(m)):'(articolo eliminato)'}</div>
+      <div class="ri-meta" style="margin-top:2px">${_bfData(mv.data)} · 👤 ${esc(mv.autore||'—')}${mv.nota?(' · '+esc(mv.nota)):''}</div></div>
+      <span style="font-family:var(--mono);font-weight:700;color:${mv.tipo==='carico'?'#22c55e':(mv.tipo==='scarico'?'#f59e0b':'var(--text2)')}">${_movLbl(mv)}${m?(' '+m.unita):''}</span></div>`;}).join('')+'</div></div>'; }
+  const tb=(id,lbl)=>`<button onclick="apriMagazzino('${id}')" style="flex:1;padding:9px 4px;border:none;border-radius:9px;font-weight:700;font-size:12px;font-family:inherit;${tab===id?'background:var(--accent2,#2563eb);color:#fff':'background:var(--surface2,#1c2030);color:var(--text2)'}">${lbl}</button>`;
+  const inner=`<div style="display:flex;gap:6px;margin-bottom:12px">${tb('mag','📦 Magazzino')}${tb('ord','🛒 Da ordinare ('+ord.length+')')}${tb('sto','📜 Storico')}</div>`+
+    (tab==='ord'?ordBody:(tab==='sto'?stoBody:magBody))+
     (tab==='mag'?`<div style="display:flex;gap:8px;margin-top:10px"><button onclick="document.getElementById('mag-ov').remove();caricaMateriali()" style="flex:1;padding:10px;border:none;border-radius:9px;background:var(--surface2,#1c2030);color:var(--accent);font-size:12px;font-family:inherit">📥 Carica catalogo</button><button onclick="document.getElementById('mag-ov').remove();openModalMateriale()" style="flex:1;padding:10px;border:none;border-radius:9px;background:var(--surface2,#1c2030);color:var(--accent);font-size:12px;font-family:inherit">➕ Nuovo articolo</button></div>`:'');
   const old=document.getElementById('mag-ov'); if(old)old.remove();
   document.body.appendChild(_bfOv('mag-ov','🏬 Magazzino',inner));
@@ -2809,10 +2841,23 @@ function showMaterialeDetail(id){
   html+=`<div class="sf-g"><div class="sf-lbl">Scorta in magazzino</div>
     <div style="display:flex;align-items:center;gap:12px">
       <div style="font-family:var(--mono);font-size:22px;font-weight:700;color:${(m.scorta||0)>0?'#22c55e':'var(--text3)'}">${m.scorta||0} <span style="font-size:13px;color:var(--text3)">${m.unita}</span></div>
-      <button onclick="setScorta('${id}')" style="margin-left:auto;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-size:13px;font-family:inherit">✎ Aggiorna scorta</button>
+      <button onclick="setScorta('${id}')" style="margin-left:auto;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface2,#1c2030);color:var(--text2);font-size:12px;font-family:inherit">✎ Rettifica</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button onclick="caricoArticolo('${id}')" style="flex:1;padding:10px;border:none;border-radius:9px;background:rgba(34,197,94,.15);color:#22c55e;font-weight:700;font-size:13px;font-family:inherit">📥 Carico</button>
+      <button onclick="scaricoArticolo('${id}')" style="flex:1;padding:10px;border:none;border-radius:9px;background:rgba(245,158,11,.15);color:#f59e0b;font-weight:700;font-size:13px;font-family:inherit">📤 Scarico</button>
     </div>
     ${daOrd>0?`<div style="margin-top:8px;font-size:12px;color:#f59e0b;font-weight:600">🛒 Da ordinare nei lavori: ${daOrd} ${m.unita}</div>`:''}
   </div>`;
+  html+=`<div class="sf-g"><div class="sf-lbl">Fornitore</div>
+    <div style="display:flex;align-items:center;gap:10px"><div style="flex:1;font-size:14px;${m.fornitore?'':'color:var(--text3)'}">${m.fornitore?esc(m.fornitore):'— non indicato —'}</div>
+    <button onclick="setFornitore('${id}')" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-size:13px;font-family:inherit">✎ Imposta</button></div></div>`;
+  const movs=movimentiArticolo(id);
+  if(movs.length){
+    html+=`<div class="sf-g"><div class="sf-lbl">Storico movimenti</div>`+movs.slice(0,20).map(mv=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
+      <span style="font-weight:700;color:${mv.tipo==='carico'?'#22c55e':(mv.tipo==='scarico'?'#f59e0b':'var(--text2)')}">${_movLbl(mv)} ${m.unita}</span>
+      <span style="flex:1;color:var(--text3)">${_bfData(mv.data)} · ${esc(mv.autore||'—')}${mv.nota?(' · '+esc(mv.nota)):''}</span></div>`).join('')+`</div>`;
+  }
   if(totQty)html+=`<div class="sf-g"><div class="sf-lbl">Totale impiegato</div><div style="font-family:var(--mono);font-size:18px;font-weight:600;color:var(--accent)">${totQty} ${m.unita}</div></div>`;
   if(usages.length){
     html+=`<div class="sf-g"><div class="sf-lbl">Utilizzi nelle fasi</div>`;
