@@ -1221,7 +1221,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='44';
+const APP_VERSION='45';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -1688,6 +1688,7 @@ function showAppFused(){
     document.querySelector('.content').style.display='';
     document.querySelector('.bottom-nav').style.display='flex';
     // mostra chi è loggato nel menu
+    if(typeof renderAll==='function')renderAll();
     setView('commesse',document.getElementById('nav-commesse'));
   }else{
     // MODALITÀ CAMPO
@@ -3922,7 +3923,9 @@ function buildAgendaEvents(){
       if(fasiOggi.length){
         const tecIds=[...new Set(fasiOggi.flatMap(f=>f.tecnici))];
         const fatto=(state.rapportini||[]).some(r=>r.data===tStr&&r.commessaId===c.id&&(tecIds.includes(r.operatore)||(r.tecniciIds||[]).some(id=>tecIds.includes(id))));
-        if(!fatto){
+        const cur=(typeof currentTec==='function')?currentTec():null;
+        const miRiguarda=cur&&(isUfficio(cur)||tecIds.includes(cur.id));
+        if(!fatto && miRiguarda){
           const nomi=tecIds.map(id=>{const t=getTecnico(id);return t?t.nome.split(' ')[0]:null;}).filter(Boolean);
           events.push({id:'auto-rapp-'+c.id,auto:true,tipo:'rapportino',prio:'attenzione',noDismiss:true,
             icona:'📝',titolo:`Rapportino da compilare: ${c.nome}`,
