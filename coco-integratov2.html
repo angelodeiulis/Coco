@@ -1221,7 +1221,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='75';
+const APP_VERSION='76';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -3166,11 +3166,14 @@ setTimeout(()=>{try{maybeAutoBackupOnOpen();}catch(e){console.warn(e);}},800);
 // Tecnico (non ufficio): alla riapertura riparte sempre in modalità campo
 function _foRiapriCampo(){
   const t=(typeof currentTec==='function')?currentTec():null;
-  if(t && !isUfficio(t) && !document.getElementById('campo-launcher') && typeof modalitaCampo==='function'){
-    modalitaCampo();
-  }
+  if(!t || isUfficio(t)) return;
+  if(document.getElementById('campo-launcher')) return;
+  const ah=document.querySelector('.app-header');
+  const officeShown = ah && getComputedStyle(ah).display!=='none';
+  if(officeShown){ if(typeof vaiAlCampo==='function')vaiAlCampo(); if(typeof modalitaCampo==='function')modalitaCampo(); }
 }
 window.addEventListener('pageshow',function(e){ if(e.persisted) _foRiapriCampo(); });
+document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible') setTimeout(_foRiapriCampo,30); });
 
 function renderAll(){
   const _v=document.getElementById('app-ver'); if(_v&&!_v.textContent)_v.textContent='v'+APP_VERSION;
