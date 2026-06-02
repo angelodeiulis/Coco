@@ -770,8 +770,8 @@ textarea{resize:vertical;min-height:60px;}
 </div>
 <div class="hdr-menu-ov" id="hdr-menu-ov" onclick="closeHdrMenu()"></div>
 <div class="hdr-menu" id="hdr-menu">
-  <button class="hdr-menu-item" onclick="modalitaCampo()"><span class="hmi-ico">📍</span>Modalità campo</button>
-  <button class="hdr-menu-item" onclick="closeHdrMenu();vaiAllUfficio()"><span class="hmi-ico">🏢</span>Modalità normale</button>
+  <button class="hdr-menu-item" id="mi-campo" onclick="modalitaCampo()"><span class="hmi-ico">📍</span>Modalità campo</button>
+  <button class="hdr-menu-item" id="mi-normale" onclick="closeHdrMenu();vaiAllUfficio()"><span class="hmi-ico">🏢</span>Modalità normale</button>
   <div class="hdr-menu-sep"></div>
   <button class="hdr-menu-item" onclick="hdrMenuGo('report')"><span class="hmi-ico">📊</span>Report &amp; Presenze</button>
   <button class="hdr-menu-item" onclick="hdrMenuGo('gantt')"><span class="hmi-ico">📅</span>Gantt</button>
@@ -1211,6 +1211,7 @@ let state={
   briefings:[],    // verbali/briefing operativi (più voci per lavoro)
   aiRisposte:[],   // risposte AI archiviate (data, autore, lavoro/fase)
   movimenti:[],    // storico movimenti magazzino (carico/scarico)
+  foglioOre:{},     // foglio presenze mensile per tecnico: key tid_YYYY-MM -> {day:{zona,orario,ord,straord,permesso,note}}
   _aiCtx:null,     // contesto ultima domanda all'AI
 };
 let aiHistory=[];
@@ -1220,7 +1221,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='58';
+const APP_VERSION='73';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -1243,6 +1244,7 @@ function save(){
   localStorage.setItem('st_bf4',JSON.stringify(state.briefings||[]));
   localStorage.setItem('st_ai4',JSON.stringify(state.aiRisposte||[]));
   localStorage.setItem('st_mov4',JSON.stringify(state.movimenti||[]));
+  localStorage.setItem('st_fo4',JSON.stringify(state.foglioOre||{}));
   localStorage.setItem('st_aictx',JSON.stringify(state._aiCtx||null));
 }
 function load(){
@@ -1263,6 +1265,7 @@ function load(){
     const bf=localStorage.getItem('st_bf4');if(bf)state.briefings=JSON.parse(bf);
     const ai=localStorage.getItem('st_ai4');if(ai)state.aiRisposte=JSON.parse(ai);
     const mv=localStorage.getItem('st_mov4');if(mv)state.movimenti=JSON.parse(mv);
+    const fo=localStorage.getItem('st_fo4');if(fo)state.foglioOre=JSON.parse(fo);
     const aic=localStorage.getItem('st_aictx');if(aic)state._aiCtx=JSON.parse(aic);
     // migrate old
     if(!state.commesse.length){const oc=localStorage.getItem('sietel_commesse_v1')||localStorage.getItem('st_c3');if(oc){state.commesse=JSON.parse(oc);save();}}
@@ -1714,15 +1717,20 @@ function mostraLogin(){
 // Coordinatore: passa alla modalità cantiere senza rifare login
 function modalitaCampo(){
   closeHdrMenu();
+  if(isUfficio(currentTec())){ alert('La modalità campo è riservata ai tecnici.'); return; }
   const old=document.getElementById('campo-launcher'); if(old)old.remove();
   const ov=document.createElement('div'); ov.id='campo-launcher';
   ov.style.cssText='position:fixed;inset:0;z-index:300;background:var(--bg,#0b0d12);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;overflow:auto';
   const bs='aspect-ratio:1;border:1px solid var(--border);border-radius:20px;background:var(--surface,#141720);color:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-family:inherit;cursor:pointer';
   const b=(ico,lbl,t)=>`<button onclick="entraCampo('${t}')" style="${bs}"><span style="font-size:46px">${ico}</span><span style="font-size:15px;font-weight:700;text-align:center">${lbl}</span></button>`;
+  const rappManca=(typeof _foAnyRappManca==='function'&&currentTec())?_foAnyRappManca(currentTec().id):false;
+  const bsR=bs+(rappManca?';border-color:#ef4444;box-shadow:0 0 0 1.5px #ef4444':'');
+  const bRapp=`<button onclick="entraCampo('rapportini')" style="${bsR}"><span style="font-size:46px">📝</span><span style="font-size:15px;font-weight:700;text-align:center;${rappManca?'color:#ef4444':''}">Rapportini${rappManca?' ⚠️':''}</span></button>`;
   ov.innerHTML=`<div style="font-size:12px;color:var(--text3);letter-spacing:.12em;text-transform:uppercase">Modalità campo</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;width:100%;max-width:440px">
       <button onclick="document.getElementById('campo-launcher').remove();oggiLauncher()" style="${bs}"><span style="font-size:46px">📍</span><span style="font-size:15px;font-weight:700;text-align:center">Oggi</span></button>
-      ${b('⏱️','Registrazione ore','presenze')}${b('📝','Rapportini','rapportini')}${b('🏗️','Cantieri','lavori')}
+      <button onclick="document.getElementById('campo-launcher').remove();registraOreMese()" style="${bs}"><span style="font-size:46px">⏱️</span><span style="font-size:15px;font-weight:700;text-align:center">Registrazione ore</span></button>
+      ${bRapp}${b('🏗️','Cantieri','lavori')}
     </div>
     <button onclick="document.getElementById('campo-launcher').remove()" style="margin-top:8px;padding:11px 20px;border:1px solid var(--border);border-radius:10px;background:transparent;color:var(--text3);font-family:inherit">↩︎ Modalità normale</button>`;
   document.body.appendChild(ov);
@@ -1762,6 +1770,281 @@ function entraCampo(tab){
   const ov=document.getElementById('campo-launcher'); if(ov)ov.remove();
   vaiAlCampo();
   cf_setView(tab,document.getElementById('nav-cf-'+tab));
+}
+// ── FOGLIO PRESENZE MENSILE (Registrazione ore) ──
+const _MESI=['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+const _GG=['DOMENICA','LUNEDI','MARTEDI','MERCOLEDI','GIOVEDI','VENERDI','SABATO'];
+const _FESTE=['01-01','01-06','04-25','05-01','06-02','08-15','11-01','12-08','12-25','12-26'];
+function _ymNow(d){d=d||today();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function _foMese(tid,ym){const k=tid+'_'+ym;state.foglioOre=state.foglioOre||{};state.foglioOre[k]=state.foglioOre[k]||{};return state.foglioOre[k];}
+function _isFesta(Y,M,d){const md=String(M).padStart(2,'0')+'-'+String(d).padStart(2,'0');return _FESTE.includes(md);}
+function registraOreMese(ym){
+  const t=(typeof currentTec==='function')?currentTec():null; if(!t){alert('Nessun tecnico selezionato.');return;}
+  ym=ym||_ymNow();
+  const [Y,M]=ym.split('-').map(Number);
+  const giorni=new Date(Y,M,0).getDate();
+  const mese=_foMese(t.id,ym);
+  let tot={ord:0,straord:0,perm:0,ferie:0,malattia:0}, rows='';
+  for(let d=1;d<=giorni;d++){
+    const dow=new Date(Y,M-1,d).getDay(); const we=(dow===0||dow===6); const festa=_isFesta(Y,M,d);
+    const g=mese[d]||{};
+    const _wk=!(g.ferie||g.malattiaG);
+    tot.ord+=_wk?(parseFloat(g.ord)||0):0; tot.straord+=_wk?(parseFloat(g.straord)||0):0; tot.perm+=_wk?(parseFloat(g.permesso)||0):0; tot.ferie+=g.ferie?(parseFloat(g.ferieOre)||8):0; tot.malattia+=g.malattiaG?8:(parseFloat(g.malattia)||0);
+    const ferie=!!g.ferie; const malg=!!g.malattiaG;
+    const zt=_foZonaTxt(g), sp=_foSpan(g);
+    const sub=[zt&&esc(zt),sp&&esc(sp),(g.ord?('ord '+g.ord):''),(g.straord?('str '+g.straord):''),(g.permesso?('perm '+g.permesso):''),((g.malattia&&!malg)?('mal '+g.malattia):''),(festa&&!ferie&&!malg)?'FESTIVITÀ':''].filter(Boolean).join(' · ')||'—';
+    const bg=ferie?'background:rgba(239,68,68,.12)':(malg?'background:rgba(59,130,246,.12)':((we||festa)?'background:rgba(245,158,11,.06)':''));
+    const dcol=ferie?'color:#ef4444':(malg?'color:#3b82f6':((we||festa)?'color:#f59e0b':''));
+    const txtcol=ferie?'#ef4444':(malg?'#3b82f6':'var(--text2)');
+    const manca=_foRappManca(t.id,ym,d);
+    rows+=`<div onclick="foEdit('${ym}',${d})" style="display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid var(--border);${bg}">
+      <div style="width:58px;flex-shrink:0;font-weight:700;${dcol}">${d} <span style="font-size:10px;color:var(--text3)">${_GG[dow].slice(0,3)}</span></div>
+      <div style="flex:1;font-size:12px;color:${txtcol};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sub}</div>
+      ${manca?`<span onclick="event.stopPropagation();foApriRapp('${ym}',${d})" title="Rapportino mancante" style="border:1.5px solid #ef4444;border-radius:8px;padding:3px 7px;color:#ef4444;font-size:13px">📝</span>`:''}
+      <span style="color:var(--text3)">›</span></div>`;
+  }
+  const prevM=M===1?`${Y-1}-12`:`${Y}-${String(M-1).padStart(2,'0')}`;
+  const nextM=M===12?`${Y+1}-01`:`${Y}-${String(M+1).padStart(2,'0')}`;
+  const old=document.getElementById('foglio-ore');if(old)old.remove();
+  const ov=document.createElement('div');ov.id='foglio-ore';ov.style.cssText='position:fixed;inset:0;z-index:320;background:var(--bg,#0b0d12);overflow:auto;padding:16px';
+  ov.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <button onclick="document.getElementById('foglio-ore').remove()" style="width:40px;height:40px;border:1px solid var(--border);border-radius:12px;background:var(--surface,#141720);color:inherit;font-size:20px;font-family:inherit">←</button>
+      <div style="flex:1"><div style="font-size:16px;font-weight:800">⏱️ Registrazione ore</div><div style="font-size:12px;color:var(--text3)">PRESENZE ${esc(t.nome)}</div></div>
+      <button onclick="foStampa('${ym}')" style="padding:10px 12px;border:none;border-radius:10px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:13px;font-family:inherit">🖨️ Stampa</button></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <button onclick="registraOreMese('${prevM}')" style="padding:8px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface,#141720);color:inherit;font-family:inherit;font-size:16px">‹</button>
+      <div style="font-weight:800;font-size:15px">${_MESI[M-1]} ${Y}</div>
+      <button onclick="registraOreMese('${nextM}')" style="padding:8px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface,#141720);color:inherit;font-family:inherit;font-size:16px">›</button></div>
+    <div style="background:var(--surface,#141720);border:1px solid var(--border);border-radius:14px;overflow:hidden">${rows}</div>
+    <div style="display:flex;gap:6px;margin-top:12px;font-size:12px;font-weight:700">
+      <span style="flex:1;text-align:center;background:var(--surface2,#1c2030);border-radius:10px;padding:10px">Ord.<br>${tot.ord}</span>
+      <span style="flex:1;text-align:center;background:var(--surface2,#1c2030);border-radius:10px;padding:10px">Straord.<br>${tot.straord}</span>
+      <span style="flex:1;text-align:center;background:var(--surface2,#1c2030);border-radius:10px;padding:10px">Perm.<br>${tot.perm}</span>
+      <span style="flex:1;text-align:center;background:rgba(239,68,68,.14);color:#ef4444;border-radius:10px;padding:10px">Ferie<br>${tot.ferie}</span>
+      <span style="flex:1;text-align:center;background:rgba(59,130,246,.14);color:#3b82f6;border-radius:10px;padding:10px">Mal.<br>${tot.malattia}</span></div>
+    <div style="height:20px"></div>`;
+  document.body.appendChild(ov);
+}
+let _foCtx={ym:null,day:null};
+function _foMin(s){if(!s)return null;const m=String(s).split(':');return (+m[0])*60+(+m[1]);}
+function _foHHMM(m){return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');}
+function _foCalc(g){
+  if(g.ferie)return{ord:0,straord:0,perm:0,ferie:8,malattia:0};
+  if(g.malattiaG)return{ord:0,straord:0,perm:0,ferie:0,malattia:8};
+  const pa=_foMin(g.pInizio),pb=_foMin(g.pFine);
+  let mins=0;
+  (g.voci||[]).forEach(v=>{const a=_foMin(v.inizio),b=_foMin(v.fine);if(a!=null&&b!=null&&b>a){let dur=b-a; if(pa!=null&&pb!=null&&pb>pa){dur-=Math.max(0,Math.min(b,pb)-Math.max(a,pa));} mins+=dur;}});
+  const tot=Math.max(0,mins)/60; const fl=Math.floor(tot); const rt=(tot-fl)>0.5?fl+1:fl;
+  const mal=parseFloat(g.malattia)||0;
+  return {ord:Math.min(rt,8),straord:Math.max(0,rt-8),perm:(mal>0?0:Math.max(0,8-rt)),ferie:0,malattia:mal}; }
+function _foZonaTxt(g){ if(g.ferie)return 'FERIE'; if(g.malattiaG)return 'MALATTIA'; if(g.voci&&g.voci.length)return [...new Set(g.voci.map(v=>v.zona).filter(Boolean))].join(', '); return g.zona||''; }
+function _foSpan(g){ if(g.ferie)return ''; if(g.voci&&g.voci.length){const ins=g.voci.map(v=>v.inizio).filter(Boolean).sort();const outs=g.voci.map(v=>v.fine).filter(Boolean).sort();if(ins.length&&outs.length)return ins[0]+'–'+outs[outs.length-1];} return g.orario||''; }
+function _foCommOpts(selectedId){
+  let o='<option value="">— cantiere —</option>';
+  (state.commesse||[]).forEach(c=>{ const lbl=c.cliente?(c.cliente+' — '+(c.nome||'')):(c.nome||'cantiere'); o+=`<option value="${c.id}" ${c.id===selectedId?'selected':''}>${esc(lbl)}</option>`; });
+  o+='<option value="__new__">➕ Nuovo cantiere</option>';
+  return o;
+}
+function foZonaNuovo(sel){
+  if(sel.value!=='__new__')return;
+  const nome=prompt('Nome nuovo cantiere / cliente:');
+  if(!nome||!nome.trim()){ sel.value=''; return; }
+  const c={id:'c'+Date.now(),nome:nome.trim(),cliente:nome.trim(),priorita:'media',inizio:fmt(today()),fine:fmt(today()),note:'Creato da Registrazione ore',colore:COLORS[state.commesse.length%COLORS.length],fasi:[]};
+  state.commesse.push(c); save();
+  document.querySelectorAll('#fo-zone .foz-zona').forEach(s=>{ const opt=document.createElement('option'); opt.value=c.id; opt.textContent=c.cliente; const nw=[...s.options].find(o=>o.value==='__new__'); s.insertBefore(opt,nw); });
+  sel.value=c.id;
+}
+function _foDateStr(ym,day){return ym+'-'+String(day).padStart(2,'0');}
+function _foRappManca(tid,ym,day){
+  const mese=_foMese(tid,ym); const g=mese[day]; if(!g||g.ferie)return false;
+  const lavoro=(parseFloat(g.ord)||0)+(parseFloat(g.straord)||0); if(lavoro<=0)return false;
+  const cids=[...new Set((g.voci||[]).map(v=>v.commessaId).filter(Boolean))];
+  if(!cids.length)return false;
+  const ds=_foDateStr(ym,day);
+  return cids.some(cid=>!(state.rapportini||[]).some(r=>r.data===ds&&r.commessaId===cid&&(r.operatore===tid||(r.tecniciIds||[]).includes(tid))));
+}
+function _foAnyRappManca(tid){
+  const pref=tid+'_'; const fo=state.foglioOre||{};
+  return Object.keys(fo).some(k=>{ if(k.indexOf(pref)!==0)return false; const ym=k.slice(pref.length); return Object.keys(fo[k]).some(d=>_foRappManca(tid,ym,+d)); });
+}
+function foApriRapp(ym,day){
+  const t=currentTec(); const g=_foMese(t.id,ym)[day]; if(!g)return;
+  const cid=((g.voci||[]).map(v=>v.commessaId).filter(Boolean))[0];
+  const ov=document.getElementById('foglio-ore'); if(ov)ov.remove();
+  if(typeof vaiAlCampo==='function')vaiAlCampo();
+  if(cid) openModalRapportino(cid); else openModalRapportino();
+}
+function foAddZona(zona,inizio,fine,commessaId){
+  const wrap=document.getElementById('fo-zone'); if(!wrap)return;
+  const ss='background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:9px;color:inherit;padding:9px;font-size:14px;font-family:inherit';
+  const row=document.createElement('div'); row.className='fo-zrow'; row.style.cssText='display:flex;gap:6px;margin-bottom:6px;align-items:center';
+  let opts=_foCommOpts(commessaId||'');
+  if(zona&&!commessaId){ opts=opts.replace('<option value="">— cantiere —</option>',`<option value="">— cantiere —</option><option value="free:${esc(zona)}" selected>${esc(zona)}</option>`); }
+  row.innerHTML=`<select class="foz-zona" onchange="foZonaNuovo(this)" style="flex:1;${ss}">${opts}</select><input class="foz-in" type="time" value="${inizio||''}" onchange="foRicalcola()" style="${ss};width:92px"><input class="foz-out" type="time" value="${fine||''}" onchange="foRicalcola()" style="${ss};width:92px"><button onclick="this.closest('.fo-zrow').remove();foRicalcola()" style="border:none;background:transparent;color:#ef4444;font-size:18px">✕</button>`;
+  wrap.appendChild(row);
+}
+function _foReadDom(){
+  const voci=[...document.querySelectorAll('#fo-zone .fo-zrow')].map(r=>{
+    const sel=r.querySelector('.foz-zona'); let zona='',cid='';
+    if(sel){ const v=sel.value; if(v==='__new__'||v===''){zona='';cid='';} else if(v.indexOf('free:')===0){zona=v.slice(5);cid='';} else {cid=v; const op=sel.options[sel.selectedIndex]; zona=op?op.text:'';} }
+    return {zona,commessaId:cid,inizio:r.querySelector('.foz-in').value,fine:r.querySelector('.foz-out').value};
+  }).filter(v=>v.zona||v.inizio||v.fine||v.commessaId);
+  return {ferie:document.getElementById('fo-ferie').checked,malattiaG:(document.getElementById('fo-malg')||{}).checked||false,malattia:parseFloat((document.getElementById('fo-malattia')||{}).value)||0,voci,pInizio:document.getElementById('fo-pin').value,pFine:document.getElementById('fo-pout').value};
+}
+let _foPausaAsked=false;
+function foPausaChange(){
+  const piEl=document.getElementById('fo-pin'), poEl=document.getElementById('fo-pout');
+  const pa=_foMin(piEl.value), pb=_foMin(poEl.value);
+  if(pa!=null&&pb!=null&&pb>pa){
+    const rows=[...document.querySelectorAll('#fo-zone .fo-zrow')];
+    for(const r of rows){
+      const inEl=r.querySelector('.foz-in'), outEl=r.querySelector('.foz-out');
+      const a=_foMin(inEl.value), b=_foMin(outEl.value);
+      if(a!=null&&b!=null&&a<pa&&pb<b){ // pausa interamente dentro questa fascia → dividi
+        const sel=r.querySelector('.foz-zona');
+        const val=sel.value; const cid=(val&&val!=='__new__'&&val.indexOf('free:')!==0)?val:'';
+        const zona=sel.options[sel.selectedIndex]?sel.options[sel.selectedIndex].text:'';
+        const origOut=outEl.value;
+        outEl.value=piEl.value;            // prima parte: inizio → inizio pausa
+        foAddZona(zona,poEl.value,origOut,cid); // seconda parte: fine pausa → fine
+        break;
+      }
+    }
+  }
+  foRicalcola();
+}
+function foRicalcola(){
+  const g=_foReadDom();
+  if(!_foPausaAsked){
+    const piEl=document.getElementById('fo-pin'), poEl=document.getElementById('fo-pout');
+    const paEmpty=!piEl.value||!poEl.value;
+    const lunga=(g.voci||[]).some(v=>{const a=_foMin(v.inizio),b=_foMin(v.fine);return a!=null&&b!=null&&(b-a)>300;});
+    if(paEmpty&&lunga){ _foPausaAsked=true; setTimeout(()=>{ if(confirm('Hai lavorato più di 5 ore di fila.\nHai fatto la pausa? Inseriscila qui sotto (anche solo 30 min): la fascia verrà divisa da sola.')){ piEl.focus(); } },60); }
+  }
+  const c=_foCalc(g);
+  document.getElementById('fo-ord').value=c.ord||'';
+  document.getElementById('fo-straord').value=c.straord||'';
+  document.getElementById('fo-perm').value=c.perm||'';
+  const fe=document.getElementById('fo-ferieore'); if(fe&&!g.ferie)fe.value='';
+}
+function foFerieToggle(){
+  const fer=document.getElementById('fo-ferie').checked;
+  if(fer){const m=document.getElementById('fo-malg'); if(m)m.checked=false; const mb=document.getElementById('fo-malattia'); if(mb)mb.value='';}
+  const wrap=document.getElementById('fo-zone-wrap'); if(wrap)wrap.style.display=(fer||(document.getElementById('fo-malg')||{}).checked)?'none':'block';
+  const fe=document.getElementById('fo-ferieore');
+  if(fer){document.getElementById('fo-ord').value='';document.getElementById('fo-straord').value='';document.getElementById('fo-perm').value='';if(fe)fe.value=8;}
+  else {if(fe)fe.value='';foRicalcola();}
+}
+function foMalattiaToggle(){
+  const mal=document.getElementById('fo-malg').checked;
+  if(mal){document.getElementById('fo-ferie').checked=false; const fe=document.getElementById('fo-ferieore'); if(fe)fe.value='';}
+  const wrap=document.getElementById('fo-zone-wrap'); if(wrap)wrap.style.display=(mal||document.getElementById('fo-ferie').checked)?'none':'block';
+  const mb=document.getElementById('fo-malattia');
+  if(mal){document.getElementById('fo-ord').value='';document.getElementById('fo-straord').value='';document.getElementById('fo-perm').value='';if(mb)mb.value=8;}
+  else {if(mb)mb.value='';foRicalcola();}
+}
+function foEdit(ym,day){
+  _foCtx={ym,day}; _foPausaAsked=false;
+  const t=currentTec(); const mese=_foMese(t.id,ym); const g=mese[day]||{};
+  const [Y,M]=ym.split('-').map(Number); const dow=new Date(Y,M-1,day).getDay();
+  const ss='width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:10px;font-size:15px;font-family:inherit';
+  const tss='background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:9px;color:inherit;padding:9px;font-size:14px;font-family:inherit;width:96px';
+  const inner=`<div style="display:flex;flex-direction:column;gap:10px">
+    <div style="font-size:13px;color:var(--text3)">${day} ${_GG[dow]} · ${_MESI[M-1]} ${Y}</div>
+    <label style="display:flex;align-items:center;gap:10px;background:var(--surface2,#1c2030);border-radius:10px;padding:11px"><input type="checkbox" id="fo-ferie" ${g.ferie?'checked':''} onchange="foFerieToggle()" style="width:20px;height:20px"><span style="font-weight:700;color:#ef4444">🌴 Ferie (giornata intera · 8 ore)</span></label>
+    <label style="display:flex;align-items:center;gap:10px;background:var(--surface2,#1c2030);border-radius:10px;padding:11px"><input type="checkbox" id="fo-malg" ${g.malattiaG?'checked':''} onchange="foMalattiaToggle()" style="width:20px;height:20px"><span style="font-weight:700;color:#3b82f6">🤒 Malattia intera giornata (8 ore)</span></label>
+    <div id="fo-zone-wrap">
+      <div style="font-size:11px;color:var(--text3);font-weight:700;margin-bottom:4px">Zone / cantieri e orari</div>
+      <div id="fo-zone"></div>
+      <button onclick="foAddZona()" style="width:100%;padding:9px;border:1px dashed var(--border);border-radius:9px;background:transparent;color:var(--accent,#4f9cf9);font-size:13px;font-family:inherit">➕ Aggiungi zona</button>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:10px"><span style="font-size:12px;color:var(--text3);min-width:46px">Pausa</span><input type="time" id="fo-pin" value="${g.pInizio||''}" onchange="foPausaChange()" style="${tss}"><span>–</span><input type="time" id="fo-pout" value="${g.pFine||''}" onchange="foPausaChange()" style="${tss}"></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <div style="flex:1"><label style="font-size:11px;color:var(--text3)">Ord.</label><input id="fo-ord" type="number" step="1" value="${g.ord!=null&&g.ord!==''?g.ord:''}" style="${ss}"></div>
+      <div style="flex:1"><label style="font-size:11px;color:var(--text3)">Straord.</label><input id="fo-straord" type="number" step="1" value="${g.straord!=null&&g.straord!==''?g.straord:''}" style="${ss}"></div>
+      <div style="flex:1"><label style="font-size:11px;color:var(--text3)">Permesso</label><input id="fo-perm" type="number" step="1" value="${g.permesso!=null&&g.permesso!==''?g.permesso:''}" style="${ss}"></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <div style="flex:1"><label style="font-size:11px;color:#ef4444">Ferie</label><input id="fo-ferieore" type="number" step="1" value="${g.ferie?(g.ferieOre||8):''}" style="${ss};border-color:rgba(239,68,68,.4)"></div>
+      <div style="flex:1"><label style="font-size:11px;color:#3b82f6">Malattia (ore)</label><input id="fo-malattia" type="number" step="1" oninput="foRicalcola()" value="${g.malattiaG?8:(g.malattia||'')}" style="${ss};border-color:rgba(59,130,246,.4)"></div>
+    </div>
+    <div style="font-size:10px;color:var(--text3)">Le ore si calcolano dagli orari (oltre 8 → straord.; sotto 8 → permesso). Malattia oraria scala le ordinarie. Puoi correggere a mano.</div>
+    <div><label style="font-size:11px;color:var(--text3)">Note</label><input id="fo-note" type="text" value="${g.note?esc(g.note):''}" style="${ss}"></div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button onclick="foSalva()" style="flex:1;padding:13px;border:none;border-radius:10px;background:var(--accent2,#2563eb);color:#fff;font-weight:800;font-size:15px;font-family:inherit">Salva</button>
+      <button onclick="foPulisci()" style="padding:13px 16px;border:1px solid var(--border);border-radius:10px;background:transparent;color:#ef4444;font-family:inherit">Svuota</button>
+    </div></div>`;
+  document.body.appendChild(_bfOv('fo-ed','Giorno '+day,inner));
+  if(g.voci&&g.voci.length) g.voci.forEach(v=>foAddZona(v.zona,v.inizio,v.fine,v.commessaId));
+  else if(g.zona) foAddZona(g.zona,'','');
+  else foAddZona('','','');
+  foFerieToggle(); foMalattiaToggle();
+}
+function foSalva(){
+  const {ym,day}=_foCtx; const t=currentTec(); const mese=_foMese(t.id,ym);
+  const dom=_foReadDom();
+  const _wk=!(dom.ferie||dom.malattiaG);
+  mese[day]={ferie:dom.ferie,malattiaG:dom.malattiaG,malattia:(parseFloat(document.getElementById('fo-malattia').value)||0),voci:dom.voci,pInizio:dom.pInizio,pFine:dom.pFine,
+    ord:_wk?(parseFloat(document.getElementById('fo-ord').value)||0):0,
+    straord:_wk?(parseFloat(document.getElementById('fo-straord').value)||0):0,
+    permesso:_wk?(parseFloat(document.getElementById('fo-perm').value)||0):0,
+    ferieOre:parseFloat(document.getElementById('fo-ferieore').value)||0,
+    note:document.getElementById('fo-note').value.trim()};
+  save(); const ov=document.getElementById('fo-ed');if(ov)ov.remove(); registraOreMese(ym);
+}
+function foPulisci(){ const {ym,day}=_foCtx; const t=currentTec(); const mese=_foMese(t.id,ym); delete mese[day]; save(); const ov=document.getElementById('fo-ed');if(ov)ov.remove(); registraOreMese(ym); }
+function foStampa(ym){
+  const t=currentTec(); const [Y,M]=ym.split('-').map(Number); const giorni=new Date(Y,M,0).getDate(); const mese=_foMese(t.id,ym);
+  let trs='', tot={ord:0,straord:0,perm:0,ferie:0,malattia:0};
+  for(let d=1;d<=giorni;d++){const dow=new Date(Y,M-1,d).getDay();const we=(dow===0||dow===6);const festa=_isFesta(Y,M,d);const g=mese[d]||{};
+    const ferie=!!g.ferie; const malg=!!g.malattiaG; const blank=ferie||malg;
+    if(!blank){tot.ord+=parseFloat(g.ord)||0;tot.straord+=parseFloat(g.straord)||0;tot.perm+=parseFloat(g.permesso)||0;}
+    tot.ferie+=ferie?(parseFloat(g.ferieOre)||8):0; tot.malattia+=malg?8:(parseFloat(g.malattia)||0);
+    const zona=ferie?'FERIE':(malg?'MALATTIA':(festa?'FESTIVITÀ':esc(_foZonaTxt(g))));
+    const cls=ferie?' class="fe"':(malg?' class="mal"':((we||festa)?' class="we"':''));
+    trs+=`<tr${cls}><td class="gg">${d}&nbsp;&nbsp;&nbsp;&nbsp;${_GG[dow]}</td><td class="z">${zona}</td><td class="o">${blank?'':esc(_foSpan(g))}</td><td>${blank?'':(g.ord||'')}</td><td>${blank?'':(g.straord||'')}</td><td>${blank?'':(g.permesso||'')}</td><td class="n">${esc(g.note||'')}</td></tr>`;}
+  const html=`<html><head><meta charset="utf-8"><title>Presenze ${esc(t.nome)} ${_MESI[M-1]} ${Y}</title>
+   <style>
+    @page{size:A4 landscape;margin:8mm}
+    body{font-family:Arial,Helvetica,sans-serif;color:#000;margin:0}
+    h2{text-align:center;letter-spacing:2px;font-size:15px;margin:2px 0 6px}
+    table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:11px}
+    col.c0{width:12.6%}col.c1{width:13.1%}col.c2{width:17.1%}col.c3{width:7%}col.c4{width:7%}col.c5{width:7%}col.c6{width:36.2%}
+    th,td{border:1px solid #000;padding:1px 5px;text-align:center;vertical-align:middle;word-wrap:break-word;overflow-wrap:break-word}
+    th{background:#d9d9d9;font-size:11px}
+    thead tr{height:9mm}
+    tbody tr{height:5mm}
+    td.gg{text-align:left;font-weight:bold;white-space:nowrap}
+    td.z,td.o{text-align:left}
+    td.n{text-align:left;vertical-align:top}
+    tr.we td{background:#f2f2f2;color:#c00000}
+    tr.fe td{background:#ffd5d5;color:#b00000}
+    tr.mal td{background:#dbeafe;color:#1e40af}
+    tr.tot td{font-weight:bold;background:#d9d9d9}
+   </style></head><body>
+   <div id="sheet">
+   <h2>PRESENZE &nbsp;&nbsp;&nbsp; ${esc(t.nome.toUpperCase())}</h2>
+   <table><colgroup><col class="c0"><col class="c1"><col class="c2"><col class="c3"><col class="c4"><col class="c5"><col class="c6"></colgroup>
+   <thead><tr><th>${_MESI[M-1].toUpperCase()} ${Y}</th><th>ZONA</th><th>ORARIO</th><th>Ore ordinarie</th><th>Ore Straord.</th><th>Ore Permesso</th><th>NOTE</th></tr></thead>
+   <tbody>${trs}<tr class="tot"><td class="gg">TOTALE</td><td></td><td></td><td>${tot.ord||''}</td><td>${tot.straord||''}</td><td>${tot.perm||''}</td><td></td></tr></tbody></table>
+   <table style="margin-top:10px;width:75%"><thead><tr><th>Ore ordinarie</th><th>Ore straordinarie</th><th>Ore permessi</th><th>Ore ferie</th><th>Ore malattia</th></tr></thead><tbody><tr><td>${tot.ord||0}</td><td>${tot.straord||0}</td><td>${tot.perm||0}</td><td>${tot.ferie||0}</td><td>${tot.malattia||0}</td></tr></tbody></table>
+   </div>
+   <script>
+   (function(){
+     function fit(){
+       var s=document.getElementById('sheet');
+       var probe=document.createElement('div'); probe.style.cssText='position:absolute;height:100mm;width:100mm;left:-9999px'; document.body.appendChild(probe);
+       var pxmm=probe.offsetHeight/100; document.body.removeChild(probe);
+       var availH=(210-16)*pxmm, availW=(297-16)*pxmm;
+       var sc=Math.min(1, availH/s.scrollHeight, availW/s.scrollWidth);
+       if(sc<1){ s.style.transformOrigin='top left'; s.style.transform='scale('+sc+')'; }
+       setTimeout(function(){ try{window.print();}catch(e){} },150);
+     }
+     if(document.readyState==='complete') fit(); else window.addEventListener('load',fit);
+   })();
+   <\/script>
+   </body></html>`;
+  const w=window.open('','_blank'); if(w){w.document.write(html);w.document.close();} else { alert('Abilita i popup per stampare il foglio.'); }
 }
 function vaiAlCampo(){
   document.querySelector('.app-header').style.display='none';
@@ -5446,6 +5729,9 @@ function toggleHdrMenu(e){
   const m=document.getElementById('hdr-menu'),ov=document.getElementById('hdr-menu-ov');
   if(m.classList.contains('open')){closeHdrMenu();return;}
   m.querySelectorAll('.hdr-menu-item').forEach(b=>b.classList.remove('active-view'));
+  const uff=isUfficio(currentTec());
+  const mc=document.getElementById('mi-campo'); if(mc)mc.style.display=uff?'none':'flex';
+  const mn=document.getElementById('mi-normale'); if(mn)mn.style.display=uff?'none':'flex';
   m.classList.add('open');ov.classList.add('open');
 }
 function closeHdrMenu(){
