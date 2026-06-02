@@ -33,7 +33,7 @@ button{font-family:var(--sans);}
 /* Menu tre puntini */
 .hdr-menu-ov{position:fixed;inset:0;z-index:59;background:transparent;display:none;}
 .hdr-menu-ov.open{display:block;}
-.hdr-menu{position:fixed;top:calc(var(--hdr-h) - 4px);right:10px;z-index:60;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.5);padding:6px;min-width:210px;opacity:0;transform:translateY(-8px) scale(.97);pointer-events:none;transition:opacity .15s,transform .15s;}
+.hdr-menu{position:fixed;top:calc(var(--hdr-h) - 4px);right:10px;z-index:60;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.5);padding:6px;min-width:210px;max-height:calc(100dvh - var(--hdr-h) - 16px);overflow-y:auto;-webkit-overflow-scrolling:touch;opacity:0;transform:translateY(-8px) scale(.97);pointer-events:none;transition:opacity .15s,transform .15s;}
 .hdr-menu.open{opacity:1;transform:translateY(0) scale(1);pointer-events:all;}
 .hdr-menu-item{width:100%;display:flex;align-items:center;gap:11px;padding:11px 12px;border:none;background:transparent;color:var(--text);font-size:13.5px;font-weight:500;cursor:pointer;border-radius:8px;text-align:left;font-family:var(--sans);}
 .hdr-menu-item:active{background:var(--surface2);}
@@ -770,6 +770,9 @@ textarea{resize:vertical;min-height:60px;}
 </div>
 <div class="hdr-menu-ov" id="hdr-menu-ov" onclick="closeHdrMenu()"></div>
 <div class="hdr-menu" id="hdr-menu">
+  <button class="hdr-menu-item" onclick="modalitaCampo()"><span class="hmi-ico">📍</span>Modalità campo</button>
+  <button class="hdr-menu-item" onclick="closeHdrMenu();vaiAllUfficio()"><span class="hmi-ico">🏢</span>Modalità normale</button>
+  <div class="hdr-menu-sep"></div>
   <button class="hdr-menu-item" onclick="hdrMenuGo('report')"><span class="hmi-ico">📊</span>Report &amp; Presenze</button>
   <button class="hdr-menu-item" onclick="hdrMenuGo('gantt')"><span class="hmi-ico">📅</span>Gantt</button>
   <button class="hdr-menu-item" onclick="hdrMenuGo('risorse')"><span class="hmi-ico">👥</span>Personale</button>
@@ -1217,7 +1220,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='52';
+const APP_VERSION='58';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -1709,6 +1712,57 @@ function mostraLogin(){
   document.getElementById('login-screen').classList.remove('hidden');
 }
 // Coordinatore: passa alla modalità cantiere senza rifare login
+function modalitaCampo(){
+  closeHdrMenu();
+  const old=document.getElementById('campo-launcher'); if(old)old.remove();
+  const ov=document.createElement('div'); ov.id='campo-launcher';
+  ov.style.cssText='position:fixed;inset:0;z-index:300;background:var(--bg,#0b0d12);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;overflow:auto';
+  const bs='aspect-ratio:1;border:1px solid var(--border);border-radius:20px;background:var(--surface,#141720);color:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-family:inherit;cursor:pointer';
+  const b=(ico,lbl,t)=>`<button onclick="entraCampo('${t}')" style="${bs}"><span style="font-size:46px">${ico}</span><span style="font-size:15px;font-weight:700;text-align:center">${lbl}</span></button>`;
+  ov.innerHTML=`<div style="font-size:12px;color:var(--text3);letter-spacing:.12em;text-transform:uppercase">Modalità campo</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;width:100%;max-width:440px">
+      <button onclick="document.getElementById('campo-launcher').remove();oggiLauncher()" style="${bs}"><span style="font-size:46px">📍</span><span style="font-size:15px;font-weight:700;text-align:center">Oggi</span></button>
+      ${b('⏱️','Registrazione ore','presenze')}${b('📝','Rapportini','rapportini')}${b('🏗️','Cantieri','lavori')}
+    </div>
+    <button onclick="document.getElementById('campo-launcher').remove()" style="margin-top:8px;padding:11px 20px;border:1px solid var(--border);border-radius:10px;background:transparent;color:var(--text3);font-family:inherit">↩︎ Modalità normale</button>`;
+  document.body.appendChild(ov);
+}
+function oggiLauncher(){
+  const old=document.getElementById('oggi-launcher'); if(old)old.remove();
+  const ov=document.createElement('div'); ov.id='oggi-launcher';
+  ov.style.cssText='position:fixed;inset:0;z-index:300;background:var(--bg,#0b0d12);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;overflow:auto';
+  const bs='aspect-ratio:1;border:1px solid var(--border);border-radius:20px;background:var(--surface,#141720);color:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-family:inherit;cursor:pointer';
+  const b=(ico,lbl,t)=>`<button onclick="oggiInfo('${t}')" style="${bs}"><span style="font-size:44px">${ico}</span><span style="font-size:14px;font-weight:700;text-align:center">${lbl}</span></button>`;
+  ov.innerHTML=`<div style="font-size:12px;color:var(--text3);letter-spacing:.12em;text-transform:uppercase">Oggi</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;width:100%;max-width:440px">
+      ${b('📍','Dove andare','dove')}${b('🛠️','Cosa fare','cosa')}${b('📦','Materiali da portare','materiali')}${b('👥','Con chi in squadra','squadra')}
+    </div>
+    <button onclick="document.getElementById('oggi-launcher').remove();modalitaCampo()" style="margin-top:8px;padding:11px 20px;border:1px solid var(--border);border-radius:10px;background:transparent;color:var(--text3);font-family:inherit">↩︎ Indietro</button>`;
+  document.body.appendChild(ov);
+}
+function oggiInfo(tipo){
+  const fasi=(typeof fasiAttiveOggi==='function')?fasiAttiveOggi():[];
+  const titles={dove:'📍 Dove devo andare',cosa:'🛠️ Cosa devo fare',materiali:'📦 Materiali da portare',squadra:'👥 Con chi in squadra'};
+  let inner;
+  if(!fasi.length){ inner='<div style="text-align:center;color:var(--text3);padding:40px 10px;font-size:15px">Nessun lavoro assegnato a te per oggi.</div>'; }
+  else { inner=fasi.map(({c,f})=>{
+    let body='';
+    if(tipo==='dove'){ body=`<div style="font-size:20px;font-weight:800">🏗️ ${esc(c.nome)}</div>`+(c.cliente?`<div style="font-size:14px;color:var(--text2);margin-top:4px">Cliente: ${esc(c.cliente)}</div>`:'')+`<div style="font-size:13px;color:var(--text3);margin-top:4px">${esc(f.nome)}</div>`; }
+    else if(tipo==='cosa'){ body=`<div style="font-size:13px;color:var(--text3)">${esc(c.nome)}</div><div style="font-size:18px;font-weight:800;margin-top:2px">${esc(f.nome)}</div>`+(f.note?`<div style="font-size:14px;color:var(--text2);margin-top:8px">📋 ${esc(f.note)}</div>`:''); }
+    else if(tipo==='materiali'){ const mats=f.materiali||[]; body=`<div style="font-size:15px;font-weight:700;margin-bottom:6px">🏗️ ${esc(c.nome)} · ${esc(f.nome)}</div>`+(mats.length?mats.map(u=>{const m=getMateriale(u.id);return m?`<div style="font-size:15px;padding:3px 0">• ${esc(matEtichetta(m))} — <b>${u.qty} ${m.unita}</b></div>`:'';}).join(''):'<div style="font-size:14px;color:var(--text3)">Nessun materiale indicato</div>'); }
+    else { const team=(f.tecnici||[]).map(id=>{const tk=getTecnico(id);return tk?tk.nome:'?';}); body=`<div style="font-size:15px;font-weight:700;margin-bottom:6px">🏗️ ${esc(c.nome)} · ${esc(f.nome)}</div>`+(team.length?team.map(n=>`<div style="font-size:16px;padding:3px 0">👤 ${esc(n)}</div>`).join(''):'<div style="font-size:14px;color:var(--text3)">Nessuno indicato</div>'); }
+    return `<div style="background:var(--surface,#141720);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px">${body}</div>`;
+  }).join(''); }
+  const ov=document.createElement('div'); ov.id='oggi-info';
+  ov.style.cssText='position:fixed;inset:0;z-index:320;background:var(--bg,#0b0d12);overflow:auto;padding:20px';
+  ov.innerHTML=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:18px"><button onclick="document.getElementById('oggi-info').remove()" style="width:40px;height:40px;border:1px solid var(--border);border-radius:12px;background:var(--surface,#141720);color:inherit;font-size:20px;font-family:inherit">←</button><div style="font-size:19px;font-weight:800">${titles[tipo]}</div></div>${inner}`;
+  document.body.appendChild(ov);
+}
+function entraCampo(tab){
+  const ov=document.getElementById('campo-launcher'); if(ov)ov.remove();
+  vaiAlCampo();
+  cf_setView(tab,document.getElementById('nav-cf-'+tab));
+}
 function vaiAlCampo(){
   document.querySelector('.app-header').style.display='none';
   document.querySelector('.content').style.display='none';
@@ -1937,21 +1991,18 @@ function renderOggi(){
   }else{
     fasi.forEach(({c,f})=>{
       const altri=(f.tecnici||[]).filter(id=>id!==t.id).map(id=>{const tk=getTecnico(id);return tk?tk.nome.split(' ')[0]:'?';});
-      h+=`<div class="card">
-        <div class="card-hdr">
-          <div class="c-dot" style="background:${SC[f.stato]||'#64748b'}"></div>
-          <div class="c-info">
-            <div class="c-nome">${esc(f.nome)}</div>
-            <div class="c-sub"><span>${esc(c.nome)}</span></div>
-            <div class="c-sub" style="color:var(--text3)">
-              <span class="chip" style="border-color:${SC[f.stato]}55;color:${SC[f.stato]}">${SL[f.stato]||f.stato}</span>
-              ${altri.length?`<span>👥 con ${altri.join(', ')}</span>`:'<span>👤 da solo</span>'}
-            </div>
-          </div>
-        </div>
-        <div class="inner-list">
-          <div class="row-item" onclick="cf_openModalTs(null,'${c.id}')"><div class="ri"><div class="ri-nome">⏱️ Registra ore su questa fase</div></div><span style="color:var(--text3)">›</span></div>
-          <div class="row-item" onclick="openModalRapportino('${c.id}')"><div class="ri"><div class="ri-nome">📝 Compila rapportino</div></div><span style="color:var(--text3)">›</span></div>
+      const mats=(f.materiali||[]);
+      const matHtml=mats.length?`<div style="margin-top:10px"><div style="font-size:12px;color:var(--text3);font-weight:700;margin-bottom:3px">📦 Materiale da avere</div>`+mats.map(u=>{const m=getMateriale(u.id);if(!m)return '';return `<div style="font-size:14px;padding:2px 0">• ${esc(matEtichetta(m))} — <b>${u.qty} ${m.unita}</b></div>`;}).join('')+`</div>`:'';
+      const noteHtml=f.note?`<div style="margin-top:8px;font-size:14px;color:var(--text2)">📋 ${esc(f.note)}</div>`:'';
+      h+=`<div style="background:var(--surface,#141720);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px">
+        <div style="font-size:18px;font-weight:800">🏗️ ${esc(c.nome)}</div>
+        <div style="font-size:15px;color:var(--text2);margin-top:2px">${esc(f.nome)}</div>
+        <div style="font-size:14px;margin-top:8px">${altri.length?'👥 In squadra con <b>'+altri.join(', ')+'</b>':'👤 Da solo'}</div>
+        ${noteHtml}
+        ${matHtml}
+        <div style="display:flex;gap:10px;margin-top:14px">
+          <button onclick="cf_openModalTs(null,'${c.id}')" style="flex:1;padding:12px;border:none;border-radius:12px;background:var(--surface2,#1c2030);color:#fff;font-weight:700;font-size:14px;font-family:inherit">⏱️ Ore</button>
+          <button onclick="openModalRapportino('${c.id}')" style="flex:1;padding:12px;border:none;border-radius:12px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:14px;font-family:inherit">📝 Rapportino</button>
         </div>
       </div>`;
     });
