@@ -1221,7 +1221,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='76';
+const APP_VERSION='78';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -1726,7 +1726,7 @@ function modalitaCampo(){
   const b=(ico,lbl,t)=>`<button onclick="entraCampo('${t}')" style="${bs}"><span style="font-size:46px">${ico}</span><span style="font-size:15px;font-weight:700;text-align:center">${lbl}</span></button>`;
   const rappManca=(typeof _foAnyRappManca==='function'&&currentTec())?_foAnyRappManca(currentTec().id):false;
   const bsR=bs+(rappManca?';border-color:#ef4444;box-shadow:0 0 0 1.5px #ef4444':'');
-  const bRapp=`<button onclick="entraCampo('rapportini')" style="${bsR}"><span style="font-size:46px">📝</span><span style="font-size:15px;font-weight:700;text-align:center;${rappManca?'color:#ef4444':''}">Rapportini${rappManca?' ⚠️':''}</span></button>`;
+  const bRapp=`<button onclick="document.getElementById('campo-launcher').remove();rapportiniLauncher()" style="${bsR}"><span style="font-size:46px">📝</span><span style="font-size:15px;font-weight:700;text-align:center;${rappManca?'color:#ef4444':''}">Rapportini${rappManca?' ⚠️':''}</span></button>`;
   ov.innerHTML=`<div style="font-size:12px;color:var(--text3);letter-spacing:.12em;text-transform:uppercase">Modalità campo</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;width:100%;max-width:440px">
       <button onclick="document.getElementById('campo-launcher').remove();oggiLauncher()" style="${bs}"><span style="font-size:46px">📍</span><span style="font-size:15px;font-weight:700;text-align:center">Oggi</span></button>
@@ -1872,7 +1872,6 @@ function foApriRapp(ym,day){
   const t=currentTec(); const g=_foMese(t.id,ym)[day]; if(!g)return;
   const cid=((g.voci||[]).map(v=>v.commessaId).filter(Boolean))[0];
   const ov=document.getElementById('foglio-ore'); if(ov)ov.remove();
-  if(typeof vaiAlCampo==='function')vaiAlCampo();
   if(cid) openModalRapportino(cid); else openModalRapportino();
 }
 function foAddZona(zona,inizio,fine,commessaId){
@@ -2046,6 +2045,35 @@ function foStampa(ym){
    <\/script>
    </body></html>`;
   const w=window.open('','_blank'); if(w){w.document.write(html);w.document.close();} else { alert('Abilita i popup per stampare il foglio.'); }
+}
+function rapportiniLauncher(){
+  const old=document.getElementById('rapp-launcher'); if(old)old.remove();
+  const ov=document.createElement('div'); ov.id='rapp-launcher';
+  ov.style.cssText='position:fixed;inset:0;z-index:300;background:var(--bg,#0b0d12);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;overflow:auto';
+  const bs='aspect-ratio:1;border:1px solid var(--border);border-radius:20px;background:var(--surface,#141720);color:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-family:inherit;cursor:pointer';
+  ov.innerHTML=`<div style="font-size:12px;color:var(--text3);letter-spacing:.12em;text-transform:uppercase">Rapportini</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;width:100%;max-width:440px">
+      <button onclick="rappMieiLista()" style="${bs}"><span style="font-size:46px">📋</span><span style="font-size:15px;font-weight:700;text-align:center">I miei rapportini</span></button>
+      <button onclick="rappNuovo()" style="${bs}"><span style="font-size:46px">➕</span><span style="font-size:15px;font-weight:700;text-align:center">Nuovo</span></button>
+    </div>
+    <button onclick="document.getElementById('rapp-launcher').remove();modalitaCampo()" style="margin-top:8px;padding:11px 20px;border:1px solid var(--border);border-radius:10px;background:transparent;color:var(--text3);font-family:inherit">↩︎ Indietro</button>`;
+  document.body.appendChild(ov);
+}
+function rappNuovo(){
+  const ov=document.getElementById('rapp-launcher'); if(ov)ov.remove();
+  openModalRapportino();
+}
+function rappMieiLista(){
+  const t=currentTec(); if(!t)return;
+  const mine=(state.rapportini||[]).filter(r=>r.operatore===t.id||(r.tecniciIds||[]).includes(t.id)).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+  const inner = mine.length? mine.map(r=>{
+    const c=getCommessa(r.commessaId)||{};
+    return `<div onclick="document.getElementById('rapp-miei').remove();apriRapportinoDaFase('${r.id}')" style="background:var(--surface,#141720);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px;display:flex;align-items:center;gap:10px">
+      <div style="flex:1"><div style="font-weight:700">${esc(c.nome||c.cliente||'Cantiere')}</div><div style="font-size:12px;color:var(--text3)">${_bfData(r.data)}${r.stato?(' · '+esc(r.stato)):''}</div></div><span style="color:var(--text3)">›</span></div>`;
+  }).join('') : '<div style="text-align:center;color:var(--text3);padding:40px 10px;font-size:15px">Nessun rapportino salvato.</div>';
+  const ov=document.createElement('div'); ov.id='rapp-miei'; ov.style.cssText='position:fixed;inset:0;z-index:320;background:var(--bg,#0b0d12);overflow:auto;padding:20px';
+  ov.innerHTML=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:18px"><button onclick="document.getElementById('rapp-miei').remove()" style="width:40px;height:40px;border:1px solid var(--border);border-radius:12px;background:var(--surface,#141720);color:inherit;font-size:20px;font-family:inherit">←</button><div style="font-size:19px;font-weight:800">📋 I miei rapportini</div></div>${inner}`;
+  document.body.appendChild(ov);
 }
 function vaiAlCampo(){
   document.querySelector('.app-header').style.display='none';
