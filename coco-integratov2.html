@@ -771,8 +771,6 @@ textarea{resize:vertical;min-height:60px;}
 <div class="hdr-menu-ov" id="hdr-menu-ov" onclick="closeHdrMenu()"></div>
 <div class="hdr-menu" id="hdr-menu">
   <button class="hdr-menu-item" onclick="hdrMenuGo('report')"><span class="hmi-ico">📊</span>Report &amp; Presenze</button>
-  <button class="hdr-menu-item" onclick="hdrMenuReport('presenze')"><span class="hmi-ico">🕐</span>Presenze</button>
-  <button class="hdr-menu-item" onclick="hdrMenuReport('rapportini')"><span class="hmi-ico">📝</span>Rapportini</button>
   <button class="hdr-menu-item" onclick="hdrMenuGo('gantt')"><span class="hmi-ico">📅</span>Gantt</button>
   <button class="hdr-menu-item" onclick="hdrMenuGo('risorse')"><span class="hmi-ico">👥</span>Personale</button>
   <button class="hdr-menu-item" onclick="hdrMenuGo('computo')"><span class="hmi-ico">💶</span>Computi metrici</button>
@@ -785,7 +783,6 @@ textarea{resize:vertical;min-height:60px;}
   <button class="hdr-menu-item" onclick="closeHdrMenu();apriMagazzino()"><span class="hmi-ico">🏬</span>Magazzino</button>
   <button class="hdr-menu-item" onclick="hdrMenuGo('backup')"><span class="hmi-ico">💾</span>Backup &amp; dati</button>
   <div class="hdr-menu-sep"></div>
-  <button class="hdr-menu-item" onclick="closeHdrMenu();vaiAlCampo()"><span class="hmi-ico">📍</span>Modalità cantiere</button>
   <button class="hdr-menu-item" onclick="closeHdrMenu();logout()"><span class="hmi-ico">🚪</span>Esci / Cambia utente</button>
 </div>
 
@@ -833,7 +830,6 @@ textarea{resize:vertical;min-height:60px;}
       <select id="report-month" onchange="onReportMonthChange()"></select>
       <div class="pill-group" style="flex-shrink:0">
         <button class="pill active" id="rtab-piano" onclick="setReportTab('piano',this)">Piano</button>
-        <button class="pill" id="rtab-presenze" onclick="setReportTab('presenze',this)">Presenze</button>
         <button class="pill" id="rtab-rapportini" onclick="setReportTab('rapportini',this)">Rapportini</button>
         <button class="pill" id="rtab-finale" onclick="setReportTab('finale',this)">Report</button>
       </div>
@@ -1221,7 +1217,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='47';
+const APP_VERSION='52';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -2279,9 +2275,18 @@ function buildRappCommesseSelect(selId){
   const sel=document.getElementById('mr-commessa');
   const tid=state.currentTecnicoId;
   const mine=state.commesse.filter(c=>(c.fasi||[]).some(f=>(f.tecnici||[]).includes(tid)));
-  const list=mine.length?mine:state.commesse;
-  sel.innerHTML='<option value="">— seleziona —</option>'+list.map(c=>`<option value="${c.id}"${c.id===selId?' selected':''}>${esc(c.nome)}</option>`).join('');
-  sel.onchange=()=>buildRappOreList(collectSquadra(),{},document.getElementById('mr-data').value);
+  let list=mine.length?mine.slice():state.commesse.slice();
+  if(selId && !list.some(c=>c.id===selId)){const extra=getCommessa(selId);if(extra)list.push(extra);}
+  sel.innerHTML='<option value="">— seleziona —</option>'+list.map(c=>`<option value="${c.id}"${c.id===selId?' selected':''}>${esc(c.nome)}</option>`).join('')+'<option value="__new__">➕ Nuovo cantiere (chiamata urgente)</option>';
+  sel.onchange=()=>{ if(sel.value==='__new__'){nuovoCantiereRapportino();return;} buildRappOreList(collectSquadra(),{},document.getElementById('mr-data').value); };
+}
+function nuovoCantiereRapportino(){
+  const nome=(prompt('Nuovo cantiere (chiamata urgente) — nome:','')||'').trim();
+  if(!nome){ buildRappCommesseSelect(document.getElementById('mr-commessa').dataset.prev||''); return; }
+  const c={id:'c'+Date.now(),nome,cliente:'',priorita:'alta',inizio:fmt(today()),fine:fmt(today()),note:'Creato dal rapportino (chiamata urgente)',colore:COLORS[state.commesse.length%COLORS.length],fasi:[]};
+  state.commesse.push(c); save(); if(typeof renderCommesse==='function')renderCommesse();
+  buildRappCommesseSelect(c.id);
+  buildRappOreList(collectSquadra(),{},document.getElementById('mr-data').value);
 }
 
 function buildRappTecniciList(selIds){
@@ -3092,6 +3097,7 @@ function setReportTab(tab,btn){
 }
 
 function renderReportTab(){
+  if(state.reportTab==='presenze')state.reportTab='piano';
   // nascondi il ts-fab per default (riattivato solo in presenze)
   const tsFab=document.getElementById('ts-fab');if(tsFab)tsFab.classList.remove('show');
   if(state.reportTab==='piano') renderReportPiano();
@@ -3230,7 +3236,7 @@ function durataMinuti(inizio,fine){const i=parseOra(inizio),f=parseOra(fine);if(
 function tsForDay(dateStr){return state.timesheets.filter(v=>v.data===dateStr);}
 function tsForTecDay(tecId,dateStr){return state.timesheets.filter(v=>v.tecnicoId===tecId&&v.data===dateStr);}
 function tsForMonth(yr,mo){return state.timesheets.filter(v=>{const d=new Date(v.data);return d.getFullYear()===yr&&d.getMonth()===mo-1;});}
-function calcolaTotali(voci){let lavoro=0,viaggio=0,pausa=0;voci.forEach(v=>{const d=durataMinuti(v.oraInizio,v.oraFine);if(v.tipo==='lavoro')lavoro+=d;else if(v.tipo==='viaggio')viaggio+=d;else pausa+=d;});return{lavoro,viaggio,pausa,fatturabili:lavoro+viaggio};}
+function calcolaTotali(voci){let lavoro=0,viaggio=0,pausa=0;voci.forEach(v=>{const d=durataMinuti(v.oraInizio,v.oraFine);if(v.tipo==='lavoro')lavoro+=d;else if(v.tipo==='viaggio')viaggio+=d;else pausa+=d;});return{lavoro,viaggio,pausa,fatturabili:Math.max(0,lavoro+viaggio-pausa)};}
 const TS_COLORS={lavoro:'#22c55e',viaggio:'#4f9cf9',pausa:'#94a3b8'};
 const TS_ICONS={lavoro:'&#128296;',viaggio:'&#128663;',pausa:'&#9749;'};
 
@@ -3268,7 +3274,7 @@ function renderPresenze(){
     const voci=tsForTecDay(t.id,ds).sort((a,b)=>(a.oraInizio||'').localeCompare(b.oraInizio||''));
     const tot=calcolaTotali(voci);
     const col=RUOLO_COLORS[t.ruolo]||'#64748b';
-    body+=`<div class="ts-day-card"><div class="ts-day-hdr"><div class="ts-day-hdr-left"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col};margin-right:6px"></span>${esc(t.nome)}<small>${t.ruolo}</small></div><div class="ts-day-tot">${tot.fatturabili>0?oreStr(tot.fatturabili)+' fatt.':''}</div></div><div class="ts-tec-section"><div class="ts-tec-name">Ore giornata${puo?`<button class="ts-add-btn" onclick="openModalTs('${t.id}','${ds}')">+</button>`:''}</div>`;
+    body+=`<div class="ts-day-card"><div class="ts-day-hdr"><div class="ts-day-hdr-left"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col};margin-right:6px"></span>${esc(t.nome)}<small>${t.ruolo}</small></div><div class="ts-day-tot">${tot.fatturabili>0?oreStr(tot.fatturabili)+' lavorate':''}</div></div><div class="ts-tec-section"><div class="ts-tec-name">Ore giornata${puo?`<button class="ts-add-btn" onclick="openModalTs('${t.id}','${ds}',null,'pausa')" title="Pausa pranzo" style="margin-left:auto">&#9749;</button><button class="ts-add-btn" onclick="openModalTs('${t.id}','${ds}')">+</button>`:''}</div>`;
     if(!voci.length){body+='<div class="ts-empty-day" style="padding:8px 0 4px">&#128203; Nessuna voce.'+(puo?' Tocca + per aggiungere.':'')+'</div>';}
     else{
       voci.forEach(v=>{
@@ -3279,7 +3285,7 @@ function renderPresenze(){
         const sub=fz?fz.nome:(v.note||'');
         body+=`<div class="ts-row"${puo?` onclick="openModalTs('${t.id}','${ds}','${v.id}')"`:' style="opacity:.85"'}><div class="ts-tipo-dot" style="background:${TS_COLORS[v.tipo]}"></div><div class="ts-orario">${v.oraInizio||'?'}&#8211;${v.oraFine||'?'}</div><div class="ts-row-body"><div class="ts-row-title">${TS_ICONS[v.tipo]} ${esc(cLbl)}</div>${sub?`<div class="ts-row-sub">${esc(sub)}</div>`:''}</div><div class="ts-row-ore ${v.tipo}">${oreStr(dur)}</div></div>`;
       });
-      body+=`<div style="display:flex;gap:8px;padding:8px 0 4px;flex-wrap:wrap">${tot.lavoro?`<span style="font-size:11px;font-family:var(--mono);color:${TS_COLORS.lavoro}">&#128296; ${oreStr(tot.lavoro)}</span>`:''}${tot.viaggio?`<span style="font-size:11px;font-family:var(--mono);color:${TS_COLORS.viaggio}">&#128663; ${oreStr(tot.viaggio)}</span>`:''}${tot.pausa?`<span style="font-size:11px;font-family:var(--mono);color:${TS_COLORS.pausa}">&#9749; ${oreStr(tot.pausa)}</span>`:''}</div>`;
+      body+=`<div style="display:flex;gap:8px;padding:8px 0 4px;flex-wrap:wrap;align-items:center"><span style="font-size:11px;font-family:var(--mono);color:${TS_COLORS.lavoro}">&#128296; ${oreStr(tot.lavoro)}</span><span style="font-size:11px;font-family:var(--mono);color:${TS_COLORS.viaggio}">&#128663; ${oreStr(tot.viaggio)}</span>${tot.pausa?`<span style="font-size:11px;font-family:var(--mono);color:${TS_COLORS.pausa}">&#9749; &minus;${oreStr(tot.pausa)}</span>`:''}<span style="margin-left:auto;font-size:12px;font-weight:800;color:#22c55e">= ${oreStr(tot.fatturabili)} lavorate</span></div>`;
     }
     body+='</div></div>';
   });
@@ -3305,7 +3311,7 @@ function tsNavDay(dir){const d=new Date(state.tsDate+'T00:00:00');d.setDate(d.ge
 function setTsView(v){state.tsView=v;renderPresenze();}
 function setTsViewDay(ds){state.tsDate=ds;state.tsView='day';renderPresenze();}
 
-function openModalTs(tecId,dateStr,voceId){
+function openModalTs(tecId,dateStr,voceId,preTipo){
   const uff=isUfficio(currentTec());
   if(voceId && !uff){ const vv=state.timesheets.find(x=>x.id===voceId); if(vv && vv.tecnicoId!==state.currentTecnicoId){ alert('Puoi modificare solo le tue ore.'); return; } }
   if(!uff) tecId=state.currentTecnicoId;   // un tecnico può inserire ore solo per sé
@@ -3341,6 +3347,10 @@ function openModalTs(tecId,dateStr,voceId){
   } else {
     document.getElementById('mts-title').textContent='Nuova Voce Ore';
     del.style.display='none';
+    if(preTipo){
+      document.getElementById('mts-tipo').value=preTipo;
+      if(preTipo==='pausa'){document.getElementById('mts-inizio').value='13:00';document.getElementById('mts-fine').value='14:00';}
+    }
     onTsTipoChange();
   }
   document.getElementById('modal-ts').classList.add('open');
@@ -5328,9 +5338,9 @@ function buildComputiContext(){
 
 // ── VIEWS ──
 function setView(v,btn){
-  // rete di sicurezza: viste d'ufficio (report di tutti, backup) solo per ruoli ufficio
-  if((v==='backup'||v==='report') && !isUfficio(currentTec())){
-    alert(v==='report'?'Le presenze di tutti sono riservate all\u2019ufficio.':'Il Backup e la gestione dati sono riservati all\u2019ufficio.');
+  // rete di sicurezza: solo il backup/gestione dati resta riservato all'ufficio
+  if(v==='backup' && !isUfficio(currentTec())){
+    alert('Il Backup e la gestione dati sono riservati all\u2019ufficio.');
     return;
   }
   state.activeView=v;
