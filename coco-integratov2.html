@@ -1221,7 +1221,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='78';
+const APP_VERSION='79';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -2046,15 +2046,47 @@ function foStampa(ym){
    </body></html>`;
   const w=window.open('','_blank'); if(w){w.document.write(html);w.document.close();} else { alert('Abilita i popup per stampare il foglio.'); }
 }
+function _foMancanti(tid){
+  const fo=state.foglioOre||{}; const pref=tid+'_'; const out=[];
+  Object.keys(fo).forEach(k=>{ if(k.indexOf(pref)!==0)return; const ym=k.slice(pref.length); const mese=fo[k];
+    Object.keys(mese).forEach(ds=>{ const d=+ds; const g=mese[d]; if(!g||g.ferie||g.malattiaG)return;
+      const lavoro=(parseFloat(g.ord)||0)+(parseFloat(g.straord)||0); if(lavoro<=0)return;
+      const cids=[...new Set((g.voci||[]).map(v=>v.commessaId).filter(Boolean))];
+      const dstr=_foDateStr(ym,d);
+      cids.forEach(cid=>{ const ex=(state.rapportini||[]).some(r=>r.data===dstr&&r.commessaId===cid&&(r.operatore===tid||(r.tecniciIds||[]).includes(tid))); if(!ex) out.push({ym,day:d,cid,ds:dstr}); });
+    });
+  });
+  out.sort((a,b)=>(b.ds||'').localeCompare(a.ds||''));
+  return out;
+}
+function rappMancantiLista(){
+  const t=currentTec(); if(!t)return;
+  const list=_foMancanti(t.id);
+  const inner=list.length? list.map(m=>{ const c=getCommessa(m.cid)||{};
+    return `<div onclick="rappNuovoPer('${m.cid}','${m.ds}')" style="background:var(--surface,#141720);border:1px solid #ef4444;border-radius:14px;padding:14px;margin-bottom:10px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:20px">📝</span><div style="flex:1"><div style="font-weight:700">${esc(c.nome||c.cliente||'Cantiere')}</div><div style="font-size:12px;color:#ef4444">${_bfData(m.ds)} · rapportino mancante</div></div><span style="color:var(--text3)">›</span></div>`;
+  }).join('') : '<div style="text-align:center;color:var(--text3);padding:40px 10px;font-size:15px">Nessun rapportino mancante. 👍</div>';
+  const ov=document.createElement('div'); ov.id='rapp-manc'; ov.style.cssText='position:fixed;inset:0;z-index:320;background:var(--bg,#0b0d12);overflow:auto;padding:20px';
+  ov.innerHTML=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:18px"><button onclick="document.getElementById('rapp-manc').remove()" style="width:40px;height:40px;border:1px solid var(--border);border-radius:12px;background:var(--surface,#141720);color:inherit;font-size:20px;font-family:inherit">←</button><div style="font-size:19px;font-weight:800;color:#ef4444">⚠️ Rapportini mancanti</div></div>${inner}`;
+  document.body.appendChild(ov);
+}
+function rappNuovoPer(cid,ds){
+  ['rapp-manc','rapp-launcher','foglio-ore'].forEach(id=>{const e=document.getElementById(id);if(e)e.remove();});
+  openModalRapportino(cid);
+  if(ds){ const di=document.getElementById('mr-data'); if(di){ di.value=ds; if(typeof onRappDataChange==='function')onRappDataChange(); } }
+}
 function rapportiniLauncher(){
   const old=document.getElementById('rapp-launcher'); if(old)old.remove();
   const ov=document.createElement('div'); ov.id='rapp-launcher';
   ov.style.cssText='position:fixed;inset:0;z-index:300;background:var(--bg,#0b0d12);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;overflow:auto';
   const bs='aspect-ratio:1;border:1px solid var(--border);border-radius:20px;background:var(--surface,#141720);color:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-family:inherit;cursor:pointer';
+  const t=currentTec(); const nManc=t?_foMancanti(t.id).length:0;
+  const bsM=bs+(nManc>0?';border-color:#ef4444':'');
   ov.innerHTML=`<div style="font-size:12px;color:var(--text3);letter-spacing:.12em;text-transform:uppercase">Rapportini</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;width:100%;max-width:440px">
       <button onclick="rappMieiLista()" style="${bs}"><span style="font-size:46px">📋</span><span style="font-size:15px;font-weight:700;text-align:center">I miei rapportini</span></button>
       <button onclick="rappNuovo()" style="${bs}"><span style="font-size:46px">➕</span><span style="font-size:15px;font-weight:700;text-align:center">Nuovo</span></button>
+      <button onclick="rappMancantiLista()" style="${bsM};grid-column:1 / -1;aspect-ratio:auto;padding:16px;flex-direction:row;gap:10px"><span style="font-size:30px">⚠️</span><span style="font-size:15px;font-weight:700;${nManc>0?'color:#ef4444':''}">Mancanti${nManc>0?' ('+nManc+')':' (0)'}</span></button>
     </div>
     <button onclick="document.getElementById('rapp-launcher').remove();modalitaCampo()" style="margin-top:8px;padding:11px 20px;border:1px solid var(--border);border-radius:10px;background:transparent;color:var(--text3);font-family:inherit">↩︎ Indietro</button>`;
   document.body.appendChild(ov);
