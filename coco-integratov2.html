@@ -252,7 +252,7 @@ button{font-family:var(--sans);}
 .btn-danger{width:48px;height:48px;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:10px;color:var(--red);font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;}
 
 /* MODALS */
-.modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;opacity:0;pointer-events:none;transition:opacity .2s;display:flex;align-items:flex-end;}
+.modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:400;opacity:0;pointer-events:none;transition:opacity .2s;display:flex;align-items:flex-end;}
 .modal-ov.open{opacity:1;pointer-events:all;}
 .modal{background:var(--surface);width:100%;border-radius:16px 16px 0 0;max-height:92vh;overflow-y:auto;transform:translateY(100%);transition:transform .3s cubic-bezier(.32,.72,0,1);padding-bottom:calc(16px + var(--safe-b));}
 .modal-ov.open .modal{transform:translateY(0);}
@@ -725,7 +725,20 @@ textarea{resize:vertical;min-height:60px;}
         <div id="mr-ore-list"></div>
       </div>
       <div class="ff"><label>Attivit&agrave; svolte (una per riga)</label><textarea id="mr-attivita" rows="4" placeholder="Es:&#10;- Sostituito quadro elettrico&#10;- Cablaggio rete LAN sala server&#10;- Test isolamento e verbale"></textarea></div>
-      <div class="ff"><label>Materiali utilizzati</label><textarea id="mr-materiali" rows="3" placeholder="Es:&#10;- 30 m cavo FG16 5x6&#10;- 1 quadro ABB 36 moduli&#10;- 12 interruttori MTC"></textarea></div>
+      <div class="ff"><label>📥 Materiali arrivati in cantiere</label>
+        <div class="rapp-info-banner">Spunta ciò che è stato <b>consegnato</b> oggi. Al salvataggio passa in "In cantiere".</div>
+        <div id="mr-arrivati-list"></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+          <label style="flex:1;min-width:140px;text-align:center;padding:10px;border:1px dashed var(--border);border-radius:10px;color:var(--accent,#4f9cf9);font-size:13px;cursor:pointer">📷 Foto DDT<input type="file" accept="image/*" capture="environment" onchange="rappCaricaDDT(this)" style="display:none"></label>
+          <button type="button" onclick="rappArrivatoManuale()" style="flex:1;min-width:140px;padding:10px;border:1px dashed #3b82f6;border-radius:10px;background:transparent;color:#3b82f6;font-size:13px;font-weight:600;font-family:inherit">＋ Materiale arrivato a mano</button>
+          <button type="button" onclick="rappOrdinaDaRapportino()" style="flex:1;min-width:140px;padding:10px;border:1px dashed var(--accent2,#2563eb);border-radius:10px;background:transparent;color:var(--accent,#4f9cf9);font-size:13px;font-weight:600;font-family:inherit">＋ Ordina nuovo materiale</button>
+        </div>
+        <div id="mr-ddt-prev"></div>
+      </div>
+      <div class="ff"><label>🔧 Materiali installati / posati</label>
+        <div class="rapp-info-banner">Spunta ciò che hai <b>messo in opera</b> oggi. Al salvataggio passa in "Installati".</div>
+        <div id="mr-installati-list"></div>
+      </div>
       <div class="ff"><label>Note interne</label><textarea id="mr-note" rows="2" placeholder="Anomalie, problemi, comunicazioni..."></textarea></div>
       <div class="ff"><label>Referente cliente (opz.)</label><input type="text" id="mr-clientenome" placeholder="Es. ing. Rossi" oninput="toggleFirmaSection()"></div>
 
@@ -784,6 +797,7 @@ textarea{resize:vertical;min-height:60px;}
   <button class="hdr-menu-item" onclick="registroRisposteAI()"><span class="hmi-ico">🤖</span>Risposte AI</button>
   <button class="hdr-menu-item" onclick="ripristinaElenco()"><span class="hmi-ico">👥</span>Carica elenco persone</button>
   <button class="hdr-menu-item" onclick="closeHdrMenu();apriMagazzino()"><span class="hmi-ico">🏬</span>Magazzino</button>
+  <button class="hdr-menu-item" onclick="closeHdrMenu();ordiniInviati()"><span class="hmi-ico">🛒</span>Ordini materiali</button>
   <button class="hdr-menu-item" onclick="hdrMenuGo('backup')"><span class="hmi-ico">💾</span>Backup &amp; dati</button>
   <div class="hdr-menu-sep"></div>
   <button class="hdr-menu-item" onclick="closeHdrMenu();logout()"><span class="hmi-ico">🚪</span>Esci / Cambia utente</button>
@@ -1050,7 +1064,7 @@ textarea{resize:vertical;min-height:60px;}
     <div class="modal-handle"></div>
     <div class="modal-hdr"><h2 id="mm-title">Nuovo Materiale</h2><button class="modal-close" onclick="closeModal('modal-materiale')">×</button></div>
     <div class="modal-body">
-      <div class="ff"><label>Nome materiale</label><input type="text" id="mm-nome" placeholder="Es. Quadro ABB, Cavo FG16, UPS Eaton..."></div>
+      <div class="ff"><label>Settore</label><select id="mm-settore" onchange="onSettoreChange()"></select></div>
       <div class="form-row">
         <div class="ff"><label>Categoria</label><select id="mm-cat" onchange="onCatChange()">
           <optgroup label="⚡ Elettrico">
@@ -1080,9 +1094,14 @@ textarea{resize:vertical;min-height:60px;}
         <div class="ff"><label>Unità misura</label><select id="mm-unit"><option value="pz">pz</option><option value="m">m</option><option value="mt">mt</option><option value="kg">kg</option><option value="l">l</option><option value="conf">conf</option><option value="rotolo">rotolo</option><option value="m²">m²</option></select></div>
       </div>
       <div class="form-row">
+        <div class="ff"><label>Tipologia</label><input type="text" id="mm-tip" placeholder="Es. FG16OR16, RJ45 cat.6, 1P+N 16A..."></div>
+        <div class="ff"><label>Variante / misura</label><input type="text" id="mm-var" placeholder="Es. 3G1,5 · 2 moduli · Ø20"></div>
+      </div>
+      <div class="form-row">
         <div class="ff"><label>Fornitore</label><input type="text" id="mm-fornitore" placeholder="Es. ABB, Schneider, Eaton..."></div>
         <div class="ff"><label>Codice fornitore</label><input type="text" id="mm-codice" placeholder="Es. 2CDS251001R0164"></div>
       </div>
+      <div class="ff"><label>Nome (opzionale)</label><input type="text" id="mm-nome" placeholder="Vuoto = generato da categoria/tipologia"></div>
       <div class="ff"><label>Note / Specifiche</label><textarea id="mm-note" placeholder="Descrizione tecnica, sezione, tensione..."></textarea></div>
     </div>
     <div class="modal-footer"><button class="btn-save" onclick="saveMateriale()">Salva Materiale</button></div>
@@ -1221,7 +1240,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='79';
+const APP_VERSION='87';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -1499,7 +1518,7 @@ function apriMagazzino(tab){
   let magBody;
   if(!arts.length){ magBody='<div class="empty-state" style="padding:20px 10px"><div class="empty-big">📦</div>Catalogo vuoto.</div>'; }
   else { magBody='<div class="card"><div class="inner-list">'+arts.map(m=>{ const i=magInfo(m);
-      return `<div class="row-item" onclick="document.getElementById('mag-ov').remove();showMaterialeDetail('${m.id}')" style="align-items:center">
+      return `<div class="row-item" onclick="setTimeout(function(){var o=document.getElementById('mag-ov');if(o)o.remove();showMaterialeDetail('${m.id}');},0)" style="align-items:center">
         <div class="ri" style="flex:1"><div class="ri-nome">${esc(matEtichetta(m))}</div>
         <div class="ri-meta" style="margin-top:2px">disp: <b style="color:${i.disponibile>0?'#22c55e':'var(--text3)'}">${i.disponibile} ${m.unita}</b> · scorta ${i.sc} · impegnato ${i.impegnato}${m.fornitore?(' · 🏢 '+esc(m.fornitore)):''}</div></div>
         <span style="color:var(--text3)">›</span></div>`;
@@ -1528,7 +1547,7 @@ function apriMagazzino(tab){
   const inner=`<div style="display:flex;gap:6px;margin-bottom:10px">${tb('mag','📦 Magazzino')}${tb('ord','🛒 Da ordinare ('+ord.length+')')}${tb('sto','📜 Storico')}</div>`+
     `<button onclick="arrivoMateriale()" style="width:100%;padding:11px;border:none;border-radius:10px;background:rgba(34,197,94,.15);color:#22c55e;font-weight:700;font-size:13px;font-family:inherit;margin-bottom:12px">📥 Arrivo materiale (da fornitore o altro cantiere)</button>`+
     (tab==='ord'?ordBody:(tab==='sto'?stoBody:magBody))+
-    (tab==='mag'?`<div style="display:flex;gap:8px;margin-top:10px"><button onclick="document.getElementById('mag-ov').remove();caricaMateriali()" style="flex:1;padding:10px;border:none;border-radius:9px;background:var(--surface2,#1c2030);color:var(--accent);font-size:12px;font-family:inherit">📥 Carica catalogo</button><button onclick="document.getElementById('mag-ov').remove();openModalMateriale()" style="flex:1;padding:10px;border:none;border-radius:9px;background:var(--surface2,#1c2030);color:var(--accent);font-size:12px;font-family:inherit">➕ Nuovo articolo</button></div>`:'');
+    (tab==='mag'?`<div style="display:flex;gap:8px;margin-top:10px"><button onclick="setTimeout(function(){var o=document.getElementById('mag-ov');if(o)o.remove();caricaMateriali();},0)" style="flex:1;padding:10px;border:none;border-radius:9px;background:var(--surface2,#1c2030);color:var(--accent);font-size:12px;font-family:inherit">📥 Carica catalogo</button><button onclick="setTimeout(function(){try{openModalMateriale();}catch(err){alert('Errore apertura articolo: '+((err&&err.message)||err));} var o=document.getElementById('mag-ov');if(o)o.remove();},0)" style="flex:1;padding:10px;border:none;border-radius:9px;background:var(--surface2,#1c2030);color:var(--accent);font-size:12px;font-family:inherit">➕ Nuovo articolo</button></div>`:'');
   const old=document.getElementById('mag-ov'); if(old)old.remove();
   document.body.appendChild(_bfOv('mag-ov','🏬 Magazzino',inner));
 }
@@ -1543,7 +1562,7 @@ const UFFICIO_TEL='393331234567';
 // globals firma
 let firmaCtx=null,firmaDrawing=false,firmaLast=null,firmaHasInk=false;
 // helper cantiere mancanti nella fusione
-const fmtNum=n=>(Math.round(n*100)/100).toString().replace(/\.?0+$/,'');
+const fmtNum=n=>{const v=Math.round((Number(n)||0)*100)/100; return Number.isInteger(v)?String(v):String(v).replace(/0+$/,'');};
 function colorFor(id,arr){return COLORS[Math.abs([...String(id)].reduce((a,c)=>a+c.charCodeAt(0),0))%COLORS.length];}
 
 // Ruoli che accedono alla modalità UFFICIO (app completa)
@@ -1731,11 +1750,192 @@ function modalitaCampo(){
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;width:100%;max-width:440px">
       <button onclick="document.getElementById('campo-launcher').remove();oggiLauncher()" style="${bs}"><span style="font-size:46px">📍</span><span style="font-size:15px;font-weight:700;text-align:center">Oggi</span></button>
       <button onclick="document.getElementById('campo-launcher').remove();registraOreMese()" style="${bs}"><span style="font-size:46px">⏱️</span><span style="font-size:15px;font-weight:700;text-align:center">Registrazione ore</span></button>
-      ${bRapp}${b('🏗️','Cantieri','lavori')}
+      ${bRapp}<button onclick="document.getElementById('campo-launcher').remove();nuovoOrdineMateriali()" style="${bs}"><span style="font-size:46px">🛒</span><span style="font-size:15px;font-weight:700;text-align:center">Nuovo ordine materiali</span></button>
     </div>
     <button onclick="document.getElementById('campo-launcher').remove()" style="margin-top:8px;padding:11px 20px;border:1px solid var(--border);border-radius:10px;background:transparent;color:var(--text3);font-family:inherit">↩︎ Modalità normale</button>`;
   document.body.appendChild(ov);
 }
+
+/* ═══════ NUOVO ORDINE MATERIALI (campo) ═══════ */
+function nuovoOrdineMateriali(){
+  const old=document.getElementById('ordine-mat'); if(old)old.remove();
+  // cantiere suggerito: quello del primo lavoro di oggi, se c'è
+  let cantSug='';
+  try{ const fa=(typeof fasiAttiveOggi==='function')?fasiAttiveOggi():[]; if(fa.length) cantSug=fa[0].c.id; }catch(e){}
+  const opts=(state.commesse||[]).map(c=>`<option value="${c.id}"${c.id===cantSug?' selected':''}>${esc(c.nome)}</option>`).join('');
+  const mats=[...(state.materiali||[])].sort((a,b)=>matEtichetta(a).localeCompare(matEtichetta(b)));
+  const fld='background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:11px;font-family:inherit;font-size:15px;box-sizing:border-box;width:100%';
+  const righe=mats.map(m=>`
+    <div class="ord-row" data-s="${esc((matEtichetta(m)+' '+(m.categoria||'')).toLowerCase())}" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(matEtichetta(m))}</div><div style="font-size:11px;color:var(--text3)">${esc(m.unita||'pz')}${m.scorta!=null?' · mag. '+m.scorta:''}</div></div>
+      <button onclick="_ordStep('${m.id}',-1)" style="width:38px;height:38px;border:1px solid var(--border);border-radius:10px;background:var(--surface,#141720);color:inherit;font-size:20px;font-family:inherit">−</button>
+      <input id="ordq-${m.id}" type="number" inputmode="numeric" min="0" value="0" style="width:54px;height:38px;text-align:center;${fld};padding:0;font-size:15px">
+      <button onclick="_ordStep('${m.id}',1)" style="width:38px;height:38px;border:1px solid var(--border);border-radius:10px;background:var(--surface,#141720);color:inherit;font-size:20px;font-family:inherit">+</button>
+    </div>`).join('');
+  const ov=document.createElement('div'); ov.id='ordine-mat';
+  ov.style.cssText='position:fixed;inset:0;z-index:320;background:var(--bg,#0b0d12);overflow:auto;padding:18px';
+  ov.innerHTML=`
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <button onclick="document.getElementById('ordine-mat').remove();modalitaCampo()" style="width:40px;height:40px;border:1px solid var(--border);border-radius:12px;background:var(--surface,#141720);color:inherit;font-size:20px;font-family:inherit">←</button>
+      <div style="font-size:19px;font-weight:800;flex:1">🛒 Nuovo ordine materiali</div>
+      <button onclick="ordiniInviati()" style="padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface,#141720);color:inherit;font-size:13px;font-weight:600;font-family:inherit">📑 Inviati</button>
+    </div>
+    <div style="margin-bottom:10px"><label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Cantiere</label>
+      <select id="ord-cant" style="${fld}">${opts||'<option value="">— nessuna commessa —</option>'}</select></div>
+    <input id="ord-search" oninput="_ordFilter(this.value)" placeholder="🔎 Cerca materiale…" style="${fld};margin-bottom:8px">
+    <div style="max-height:42vh;overflow:auto;border:1px solid var(--border);border-radius:12px;padding:0 12px;background:var(--surface,#141720)">${righe||'<div style="padding:24px;text-align:center;color:var(--text3)">Catalogo materiali vuoto.</div>'}</div>
+    <div style="margin-top:12px"><label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Altre voci non in catalogo (una per riga)</label>
+      <textarea id="ord-extra" rows="2" placeholder="es. Pressacavo PG13.5 ×10" style="${fld};resize:vertical"></textarea></div>
+    <div style="margin-top:10px"><label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Note</label>
+      <textarea id="ord-note" rows="2" placeholder="Urgenza, consegna, riferimenti…" style="${fld};resize:vertical"></textarea></div>
+    <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+      <button onclick="inviaOrdineMateriali('wa')" style="flex:1;min-width:140px;padding:14px;border:none;border-radius:12px;background:#25d366;color:#063;font-weight:800;font-size:15px;font-family:inherit">📲 Invia (WhatsApp)</button>
+      <button onclick="inviaOrdineMateriali('share')" style="flex:1;min-width:120px;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--surface,#141720);color:inherit;font-weight:700;font-size:15px;font-family:inherit">📤 Condividi / Copia</button>
+    </div>`;
+  document.body.appendChild(ov);
+}
+function _ordStep(id,d){ const i=document.getElementById('ordq-'+id); if(!i)return; i.value=Math.max(0,(parseInt(i.value,10)||0)+d); }
+function _ordFilter(q){ q=(q||'').toLowerCase().trim(); document.querySelectorAll('#ordine-mat .ord-row').forEach(r=>{ r.style.display=(!q||r.dataset.s.includes(q))?'':'none'; }); }
+function _ordRaccogli(){
+  const righe=[];
+  (state.materiali||[]).forEach(m=>{ const i=document.getElementById('ordq-'+m.id); const q=i?parseInt(i.value,10)||0:0; if(q>0) righe.push({id:m.id,nome:matEtichetta(m),unita:m.unita||'pz',qty:q}); });
+  const extra=(document.getElementById('ord-extra').value||'').split('\n').map(s=>s.trim()).filter(Boolean);
+  const cantId=document.getElementById('ord-cant').value;
+  const c=(state.commesse||[]).find(x=>x.id===cantId);
+  const note=(document.getElementById('ord-note').value||'').trim();
+  return {righe,extra,cantId,cantNome:c?c.nome:'',note};
+}
+function _ordTesto(o){
+  const tec=(typeof currentTec==='function'&&currentTec())?currentTec().nome:'';
+  let t='🛒 NUOVO ORDINE MATERIALI\n';
+  if(tec) t+='Tecnico: '+tec+'\n';
+  if(o.cantNome) t+='Cantiere: '+o.cantNome+'\n';
+  t+='Data: '+new Date().toLocaleDateString('it-IT')+'\n\n';
+  if(o.righe.length) t+=o.righe.map(r=>`• ${r.nome} — ${r.qty} ${r.unita}`).join('\n')+'\n';
+  if(o.extra.length) t+='\nAltre voci:\n'+o.extra.map(e=>'- '+e).join('\n')+'\n';
+  if(o.note) t+='\nNote: '+o.note;
+  return t.trim();
+}
+async function inviaOrdineMateriali(modo){
+  const o=_ordRaccogli();
+  if(!o.righe.length && !o.extra.length){ alert('Aggiungi almeno un materiale all\'ordine.'); return; }
+  const testo=_ordTesto(o);
+  // salva storico ordini
+  state.ordini=state.ordini||[];
+  state.ordini.push({id:'ord'+Date.now(), data:new Date().toISOString(), tecId:(typeof currentTec==='function'&&currentTec())?currentTec().id:null, cantId:o.cantId, cantNome:o.cantNome, righe:o.righe, extra:o.extra, note:o.note});
+  // le voci ordinate confluiscono nella To-Do della commessa, colonna "Ordinati"
+  const _c=getCommessa(o.cantId);
+  if(_c){ _c.todoMat=_c.todoMat||[];
+    (o.righe||[]).forEach(r=>_c.todoMat.push({id:'tm'+Date.now()+Math.floor(Math.random()*10000),matId:r.id||null,nome:r.nome,qty:r.qty,unita:r.unita,stato:'ordinati',ddt:null,ts_ordinati:Date.now()}));
+    (o.extra||[]).forEach(t=>_c.todoMat.push({id:'tm'+Date.now()+Math.floor(Math.random()*10000),matId:null,nome:t,qty:0,unita:'',stato:'ordinati',ddt:null,ts_ordinati:Date.now()}));
+  }
+  if(typeof save==='function') save();
+  if(modo==='wa'){
+    window.open(`https://wa.me/${UFFICIO_TEL}?text=${encodeURIComponent(testo)}`,'_blank');
+  } else if(navigator.share){
+    try{ await navigator.share({title:'Ordine materiali',text:testo}); }catch(e){}
+  } else {
+    try{ await navigator.clipboard.writeText(testo); alert('📋 Ordine copiato negli appunti.'); }
+    catch(e){ prompt('Copia il testo dell\'ordine:',testo); }
+  }
+  const ov=document.getElementById('ordine-mat'); if(ov)ov.remove();
+}
+
+/* ═══════ ORDINI INVIATI (storico + modifica con permessi) ═══════ */
+function puoModificareOrdine(o){ const t=(typeof currentTec==='function')?currentTec():null; if(!t)return false; return isUfficio(t)||o.tecId===t.id; }
+function _ordFmtData(iso){ try{ return new Date(iso).toLocaleDateString('it-IT'); }catch(e){ return iso||''; } }
+function _ordNomeTec(id){ const t=(typeof getTecnico==='function')?getTecnico(id):null; return t?t.nome:'—'; }
+function ordiniInviati(){
+  const old=document.getElementById('ordini-list'); if(old)old.remove();
+  const me=(typeof currentTec==='function')?currentTec():null;
+  const uff=isUfficio(me);
+  let ord=[...(state.ordini||[])].sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+  if(!uff && me) ord=ord.filter(o=>o.tecId===me.id);
+  const items = ord.length ? ord.map(o=>{
+    const nr=(o.righe||[]).length+(o.extra||[]).length;
+    const canEdit=puoModificareOrdine(o);
+    const sintesi=[...(o.righe||[]).map(r=>esc(r.nome)+' ×'+r.qty),...(o.extra||[]).map(e=>esc(e))].slice(0,4).join(' · ');
+    return `<div style="background:var(--surface,#141720);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div style="min-width:0">
+          <div style="font-size:16px;font-weight:800">🏗️ ${esc(o.cantNome||'— senza cantiere —')}</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px">📅 ${_ordFmtData(o.data)} · 👤 ${esc(_ordNomeTec(o.tecId))} · ${nr} voci</div>
+        </div>
+        ${canEdit?`<button onclick="editOrdine('${o.id}')" style="flex-shrink:0;padding:8px 12px;border:1px solid var(--border);border-radius:9px;background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-size:13px;font-family:inherit">✎ Modifica</button>`:''}
+      </div>
+      <div style="font-size:13px;color:var(--text2);margin-top:8px">${sintesi||'—'}${nr>4?' …':''}</div>
+      ${o.note?`<div style="font-size:12px;color:var(--text3);margin-top:6px">📝 ${esc(o.note)}</div>`:''}
+      ${o.modificatoIl?`<div style="font-size:10px;color:var(--text3);margin-top:6px;font-style:italic">ultima modifica: ${_ordFmtData(o.modificatoIl)} · ${esc(_ordNomeTec(o.modificatoDa))}</div>`:''}
+    </div>`;
+  }).join('') : '<div style="text-align:center;color:var(--text3);padding:50px 10px">Nessun ordine inviato.</div>';
+  const ov=document.createElement('div'); ov.id='ordini-list';
+  ov.style.cssText='position:fixed;inset:0;z-index:330;background:var(--bg,#0b0d12);overflow:auto;padding:18px';
+  ov.innerHTML=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+    <button onclick="document.getElementById('ordini-list').remove()" style="width:40px;height:40px;border:1px solid var(--border);border-radius:12px;background:var(--surface,#141720);color:inherit;font-size:20px;font-family:inherit">←</button>
+    <div style="font-size:19px;font-weight:800">📑 Ordini inviati</div></div>
+    ${uff?'':'<div style="font-size:12px;color:var(--text3);margin-bottom:10px">Vedi e modifichi i tuoi ordini. L\'ufficio può modificarli tutti.</div>'}
+    ${items}`;
+  document.body.appendChild(ov);
+}
+function editOrdine(id){
+  const o=(state.ordini||[]).find(x=>x.id===id); if(!o){ alert('Ordine non trovato.'); return; }
+  if(!puoModificareOrdine(o)){ alert('Non hai i permessi per modificare questo ordine.'); return; }
+  const old=document.getElementById('ordine-edit'); if(old)old.remove();
+  const fld='background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:11px;font-family:inherit;font-size:15px;box-sizing:border-box;width:100%';
+  const optC=(state.commesse||[]).map(c=>`<option value="${c.id}"${c.id===o.cantId?' selected':''}>${esc(c.nome)}</option>`).join('');
+  const optT=(state.tecnici||[]).map(t=>`<option value="${t.id}"${t.id===o.tecId?' selected':''}>${esc(t.nome)}</option>`).join('');
+  let dataVal=''; try{ dataVal=new Date(o.data).toISOString().slice(0,10); }catch(e){}
+  const righe=(o.righe||[]).map((r,i)=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+    <div style="flex:1;min-width:0;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.nome)}</div>
+    <input id="oe-q-${i}" type="number" inputmode="numeric" min="0" value="${r.qty}" style="width:60px;text-align:center;${fld};padding:8px">
+    <span style="font-size:12px;color:var(--text3);width:34px">${esc(r.unita||'')}</span></div>`).join('');
+  const ov=document.createElement('div'); ov.id='ordine-edit';
+  ov.style.cssText='position:fixed;inset:0;z-index:340;background:var(--bg,#0b0d12);overflow:auto;padding:18px';
+  ov.innerHTML=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+    <button onclick="document.getElementById('ordine-edit').remove()" style="width:40px;height:40px;border:1px solid var(--border);border-radius:12px;background:var(--surface,#141720);color:inherit;font-size:20px;font-family:inherit">←</button>
+    <div style="font-size:18px;font-weight:800">✎ Modifica ordine</div></div>
+    <div style="margin-bottom:10px"><label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Cantiere</label><select id="oe-cant" style="${fld}">${optC||'<option value="">—</option>'}</select></div>
+    <div style="display:flex;gap:10px;margin-bottom:10px">
+      <div style="flex:1"><label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Data</label><input id="oe-data" type="date" value="${dataVal}" style="${fld}"></div>
+      <div style="flex:1"><label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Eseguito da</label><select id="oe-tec" style="${fld}">${optT||'<option value="">—</option>'}</select></div>
+    </div>
+    ${righe?`<div style="font-size:12px;color:var(--text3);margin-bottom:4px">Materiali (qty 0 = rimuovi)</div><div style="border:1px solid var(--border);border-radius:12px;padding:0 12px;background:var(--surface,#141720)">${righe}</div>`:''}
+    <div style="margin-top:12px"><label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Altre voci (una per riga)</label><textarea id="oe-extra" rows="2" style="${fld};resize:vertical">${esc((o.extra||[]).join('\n'))}</textarea></div>
+    <div style="margin-top:10px"><label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Note</label><textarea id="oe-note" rows="2" style="${fld};resize:vertical">${esc(o.note||'')}</textarea></div>
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button onclick="salvaEditOrdine('${id}')" style="flex:1;padding:14px;border:none;border-radius:12px;background:var(--accent2,#2563eb);color:#fff;font-weight:800;font-size:15px;font-family:inherit">💾 Salva</button>
+      <button onclick="eliminaOrdine('${id}')" style="padding:14px 16px;border:1px solid rgba(239,68,68,.4);border-radius:12px;background:rgba(239,68,68,.12);color:#ef4444;font-weight:700;font-size:15px;font-family:inherit">🗑</button>
+    </div>`;
+  document.body.appendChild(ov);
+}
+function salvaEditOrdine(id){
+  const o=(state.ordini||[]).find(x=>x.id===id); if(!o)return;
+  if(!puoModificareOrdine(o)){ alert('Permessi insufficienti.'); return; }
+  const cantId=document.getElementById('oe-cant').value;
+  const c=(state.commesse||[]).find(x=>x.id===cantId);
+  o.cantId=cantId; o.cantNome=c?c.nome:'';
+  o.tecId=document.getElementById('oe-tec').value||o.tecId;
+  const dv=document.getElementById('oe-data').value;
+  if(dv){ const d=new Date(dv+'T12:00:00'); if(!isNaN(d.getTime())) o.data=d.toISOString(); }
+  o.righe=(o.righe||[]).map((r,i)=>{ const inp=document.getElementById('oe-q-'+i); return {...r,qty:inp?Math.max(0,parseInt(inp.value,10)||0):r.qty}; }).filter(r=>r.qty>0);
+  o.extra=(document.getElementById('oe-extra').value||'').split('\n').map(s=>s.trim()).filter(Boolean);
+  o.note=(document.getElementById('oe-note').value||'').trim();
+  o.modificatoDa=(typeof currentTec==='function'&&currentTec())?currentTec().id:null;
+  o.modificatoIl=new Date().toISOString();
+  if(typeof save==='function')save();
+  const e=document.getElementById('ordine-edit'); if(e)e.remove();
+  ordiniInviati();
+}
+function eliminaOrdine(id){
+  const o=(state.ordini||[]).find(x=>x.id===id); if(!o)return;
+  if(!puoModificareOrdine(o)){ alert('Permessi insufficienti.'); return; }
+  if(!confirm('Eliminare definitivamente questo ordine?'))return;
+  state.ordini=(state.ordini||[]).filter(x=>x.id!==id);
+  if(typeof save==='function')save();
+  const e=document.getElementById('ordine-edit'); if(e)e.remove();
+  ordiniInviati();
+}
+
 function oggiLauncher(){
   const old=document.getElementById('oggi-launcher'); if(old)old.remove();
   const ov=document.createElement('div'); ov.id='oggi-launcher';
@@ -2673,7 +2873,7 @@ function buildRappCommesseSelect(selId){
   let list=mine.length?mine.slice():state.commesse.slice();
   if(selId && !list.some(c=>c.id===selId)){const extra=getCommessa(selId);if(extra)list.push(extra);}
   sel.innerHTML='<option value="">— seleziona —</option>'+list.map(c=>`<option value="${c.id}"${c.id===selId?' selected':''}>${esc(c.nome)}</option>`).join('')+'<option value="__new__">➕ Nuovo cantiere (chiamata urgente)</option>';
-  sel.onchange=()=>{ if(sel.value==='__new__'){nuovoCantiereRapportino();return;} buildRappOreList(collectSquadra(),{},document.getElementById('mr-data').value); };
+  sel.onchange=()=>{ if(sel.value==='__new__'){nuovoCantiereRapportino();return;} buildRappOreList(collectSquadra(),{},document.getElementById('mr-data').value); rappRenderChecklists(); };
 }
 function nuovoCantiereRapportino(){
   const nome=(prompt('Nuovo cantiere (chiamata urgente) — nome:','')||'').trim();
@@ -2787,17 +2987,177 @@ function aggiornaTotaliRapp(){
 }
 
 function toggleFirmaSection(){const sec=document.getElementById('mr-firma-section');if(!sec)return;const v=(document.getElementById('mr-clientenome').value||'').trim();sec.style.display=v?'block':'none';if(v)setTimeout(initFirmaCanvas,50);}
+/* ═══════ MATERIALI: ciclo di vita per commessa (Ordinati → In cantiere → Installati) ═══════ */
+var _rappCheck={arrivati:[],installati:[]};
+var _rappDDT=null;
+var _rappArrManual=[];
+function _rappItemTxt(it){ return it.nome+(it.qty?(' — '+fmtNum(it.qty)+' '+(it.unita||'')):''); }
+function _rappQtyOf(sez,id,full){ const inp=document.getElementById('rqty-'+sez+'-'+id); if(!inp)return full; const v=parseFloat((inp.value||'').replace(',','.')); return (isFinite(v)&&v>0)?Math.min(v,full):full; }
+function _rappCheckedItems(){
+  const sel=document.getElementById('mr-commessa'); const c=sel?getCommessa(sel.value):null; const todo=(c&&c.todoMat)||[];
+  const build=sez=>_rappCheck[sez].map(id=>{const m=todo.find(x=>x.id===id);return m?{nome:m.nome,qty:_rappQtyOf(sez,id,m.qty),unita:m.unita}:null;}).filter(Boolean);
+  return { arr:build('arrivati').concat(_rappArrManual), ins:build('installati') };
+}
+function _rappLegacyStr(){ return _rappCheckedItems().ins.map(_rappItemTxt).join('\n'); }
+function _rappUsatiArr(r){ if(r.matInstallati&&r.matInstallati.length)return r.matInstallati; if(r.usati&&r.usati.length)return r.usati; if(r.materiali)return r.materiali.split('\n').map(l=>l.trim().replace(/^[-·•]\s*/,'')).filter(Boolean).map(l=>({nome:l})); return []; }
+
+// ── checklist nel rapportino (dipendono dalla commessa selezionata) ──
+function rappRenderChecklists(){
+  const sel=document.getElementById('mr-commessa'); const c=sel?getCommessa(sel.value):null;
+  const todo=(c&&c.todoMat)||[];
+  _rappFillCheck('arrivati','ordinati',todo);
+  _rappFillCheck('installati','cantiere',todo);
+  _rappRenderDDT();
+}
+function _rappFillCheck(sez,stato,todo){
+  const el=document.getElementById('mr-'+sez+'-list'); if(!el)return;
+  const items=todo.filter(m=>m.stato===stato);
+  _rappCheck[sez]=_rappCheck[sez].filter(id=>items.some(m=>m.id===id));
+  if(!items.length){ el.innerHTML='<div style="font-size:12px;color:var(--text3);padding:6px 2px">'+(stato==='ordinati'?'Nessun materiale in attesa di consegna.':'Nessun materiale in cantiere da posare.')+'</div>'; return; }
+  const verbo=stato==='ordinati'?'consegnati':'posati';
+  el.innerHTML=items.map(m=>{const ck=_rappCheck[sez].includes(m.id);
+    return '<div id="rrow-'+sez+'-'+m.id+'" style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid '+(ck?'var(--accent2,#2563eb)':'var(--border)')+';border-radius:12px;margin-bottom:7px;background:'+(ck?'rgba(37,99,235,.14)':'var(--surface,#141720)')+'">'
+      +'<input type="checkbox" '+(ck?'checked':'')+' '+(state.rappReadOnly?'disabled':'')+' onchange="rappToggleCheck(\''+sez+'\',\''+m.id+'\')" style="width:24px;height:24px;flex-shrink:0;accent-color:var(--accent2,#2563eb)">'
+      +'<div style="flex:1;min-width:0;font-size:14px;font-weight:600">'+esc(m.nome)+'<div style="font-size:11px;color:var(--text3);font-weight:400">disp. '+fmtNum(m.qty)+' '+esc(m.unita||'')+'</div></div>'
+      +'<input type="number" inputmode="decimal" min="0" '+(state.rappReadOnly?'disabled':'')+' id="rqty-'+sez+'-'+m.id+'" value="'+fmtNum(m.qty)+'" title="Quantità '+verbo+' oggi" style="width:62px;text-align:center;background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:8px;color:inherit;padding:9px 4px;font-family:inherit;font-size:15px;flex-shrink:0">'
+      +'<span style="font-size:12px;color:var(--text3);min-width:22px">'+esc(m.unita||'')+'</span>'
+      +'</div>';}).join('');
+}
+function rappToggleCheck(sez,id){ if(state.rappReadOnly)return; const a=_rappCheck[sez]; const i=a.indexOf(id); if(i>=0)a.splice(i,1); else a.push(id);
+  const row=document.getElementById('rrow-'+sez+'-'+id); if(row){const on=a.includes(id); row.style.background=on?'rgba(37,99,235,.14)':'var(--surface,#141720)'; row.style.borderColor=on?'var(--accent2,#2563eb)':'var(--border)';}
+}
+function rappCaricaDDT(input){ const f=input.files&&input.files[0]; if(!f)return; const rd=new FileReader(); rd.onload=e=>{_rappDDT=e.target.result;_rappRenderDDT();}; rd.readAsDataURL(f); }
+function _rappRenderDDT(){ const el=document.getElementById('mr-ddt-prev'); if(!el)return;
+  el.innerHTML=_rappDDT?'<div style="position:relative;display:inline-block;margin-top:8px"><img src="'+_rappDDT+'" style="max-width:130px;max-height:130px;border-radius:8px;border:1px solid var(--border);display:block"><button type="button" '+(state.rappReadOnly?'disabled':'')+' onclick="_rappDDT=null;_rappRenderDDT()" style="position:absolute;top:-8px;right:-8px;width:24px;height:24px;border:none;border-radius:50%;background:#ef4444;color:#fff;font-size:14px;font-family:inherit">×</button></div>':'';
+}
+// sposta gli stati al salvataggio definitivo del rapportino
+function _rappApplyStati(){
+  const c=getCommessa(document.getElementById('mr-commessa').value); if(!c)return {arrivati:[],installati:[]};
+  c.todoMat=c.todoMat||[]; const arrivati=[],installati=[];
+  const newId=()=>'tm'+Date.now()+Math.floor(Math.random()*100000);
+  _rappCheck.arrivati.forEach(id=>{const m=c.todoMat.find(x=>x.id===id&&x.stato==='ordinati'); if(!m)return; const q=_rappQtyOf('arrivati',id,m.qty);
+    if(q>=m.qty){ m.stato='cantiere'; m.ts_cantiere=Date.now(); if(_rappDDT)m.ddt=_rappDDT; arrivati.push({nome:m.nome,qty:m.qty,unita:m.unita}); }
+    else { m.qty=m.qty-q; c.todoMat.push({id:newId(),matId:m.matId||null,nome:m.nome,qty:q,unita:m.unita,stato:'cantiere',ddt:_rappDDT||null,ts_cantiere:Date.now()}); arrivati.push({nome:m.nome,qty:q,unita:m.unita}); }
+  });
+  _rappCheck.installati.forEach(id=>{const m=c.todoMat.find(x=>x.id===id&&x.stato==='cantiere'); if(!m)return; const q=_rappQtyOf('installati',id,m.qty);
+    if(q>=m.qty){ m.stato='installati'; m.ts_installati=Date.now(); installati.push({nome:m.nome,qty:m.qty,unita:m.unita}); }
+    else { m.qty=m.qty-q; c.todoMat.push({id:newId(),matId:m.matId||null,nome:m.nome,qty:q,unita:m.unita,stato:'installati',ts_installati:Date.now()}); installati.push({nome:m.nome,qty:q,unita:m.unita}); }
+  });
+  _rappArrManual.forEach(x=>arrivati.push(x));
+  return {arrivati,installati};
+}
+
+// ── picker materiale riusabile (cascata Categoria→Tipologia→Variante) ──
+var __matPickCb=null;
+function pickMateriale(titolo,cb,btnLabel){
+  __matPickCb=cb;
+  const old=document.getElementById('mat-picker'); if(old)old.remove();
+  const cats=[...new Set((state.materiali||[]).map(m=>m.categoria||'').filter(Boolean))].sort();
+  const unitaOpt=['pz','m','mt','kg','l','conf','rotolo','m²'];
+  const fld='background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:11px;font-family:inherit;font-size:15px;box-sizing:border-box;width:100%';
+  const ov=document.createElement('div'); ov.id='mat-picker';
+  ov.style.cssText='position:fixed;inset:0;z-index:560;background:rgba(0,0,0,.6);display:flex;align-items:flex-end';
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+  ov.innerHTML='<div style="background:var(--surface,#141720);width:100%;border-radius:16px 16px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom,0px));max-height:90vh;overflow:auto">'
+    +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><div style="flex:1;font-weight:700;font-size:16px">🛒 '+esc(titolo)+'</div>'
+    +'<button type="button" onclick="document.getElementById(\'mat-picker\').remove()" style="width:34px;height:34px;border:none;border-radius:8px;background:var(--surface2,#1c2030);color:#fff;font-size:20px;font-family:inherit">×</button></div>'
+    +'<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Categoria</label><input id="mp-cat" list="mp-cats" placeholder="Es. Canalina, Cavo, Quadro…" style="'+fld+'"><datalist id="mp-cats">'+cats.map(c=>'<option value="'+esc(c)+'">').join('')+'</datalist></div>'
+    +'<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Tipologia</label><input id="mp-tip" placeholder="Es. Metallica, PVC, FG16OR16…" style="'+fld+'"></div>'
+    +'<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Variante / misura</label><input id="mp-var" placeholder="Es. 200x75, 3G2,5, 16A…" style="'+fld+'"></div>'
+    +'<div style="display:flex;gap:10px;margin-bottom:14px">'
+      +'<div style="flex:1"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Unità</label><select id="mp-unit" style="'+fld+'">'+unitaOpt.map(u=>'<option value="'+u+'">'+u+'</option>').join('')+'</select></div>'
+      +'<div style="flex:1"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Quantità</label><input id="mp-qty" type="number" inputmode="decimal" min="0" value="1" style="'+fld+'"></div>'
+    +'</div>'
+    +'<button type="button" onclick="mpAdd()" style="width:100%;padding:14px;border:none;border-radius:10px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;font-family:inherit">＋ '+esc(btnLabel||'Aggiungi')+'</button>'
+    +'</div>';
+  document.body.appendChild(ov);
+  setTimeout(()=>{var f=document.getElementById('mp-cat'); if(f)f.focus();},120);
+}
+function mpAdd(){
+  const categoria=(document.getElementById('mp-cat').value||'').trim();
+  const tipologia=(document.getElementById('mp-tip').value||'').trim();
+  const variante=(document.getElementById('mp-var').value||'').trim();
+  const unita=document.getElementById('mp-unit').value||'pz';
+  const q=parseFloat((document.getElementById('mp-qty').value||'').replace(',','.'))||0;
+  if(!categoria && !tipologia){ alert('Inserisci almeno Categoria o Tipologia.'); return; }
+  if(q<=0){ alert('Inserisci una quantità maggiore di zero.'); return; }
+  const nome=[categoria,tipologia,variante].filter(Boolean).join(' · ');
+  let matId=null;
+  const ex=(state.materiali||[]).find(m=>([m.categoria,m.tipologia,m.variante].filter(Boolean).join(' · ').toLowerCase()===nome.toLowerCase())||((m.nome||'').toLowerCase()===nome.toLowerCase()));
+  if(ex){ matId=ex.id; if(!ex.unita)ex.unita=unita; }
+  else { matId='m'+Date.now(); state.materiali=state.materiali||[]; state.materiali.push({id:matId,nome,categoria,tipologia,variante,unita,fornitore:'',codice:'',note:''}); }
+  if(typeof save==='function')save();
+  const cb=__matPickCb; const ov=document.getElementById('mat-picker'); if(ov)ov.remove();
+  if(cb)cb({id:matId,nome,qty:q,unita});
+}
+
+// ── To-Do materiali per commessa (Kanban 3 stati) ──
+var TODO_COLS=[['ordinati','📦 Ordinati','#f59e0b'],['cantiere','🚚 In cantiere','#3b82f6'],['installati','✅ Installati','#22c55e']];
+function todoAddMateriale(cid){
+  pickMateriale('Ordina nuovo materiale', it=>{
+    const c=getCommessa(cid); if(!c)return; c.todoMat=c.todoMat||[];
+    c.todoMat.push({id:'tm'+Date.now()+Math.floor(Math.random()*1000),matId:it.id||null,nome:it.nome,qty:it.qty,unita:it.unita,stato:'ordinati',ddt:null,ts_ordinati:Date.now()});
+    save();
+    if(document.getElementById('todo-mat'))renderTodoMat(cid);
+    const mr=document.getElementById('modal-rapportino'); if(mr&&mr.classList.contains('open'))rappRenderChecklists();
+  }, 'Aggiungi agli ordinati');
+}
+function rappOrdinaDaRapportino(){ const sel=document.getElementById('mr-commessa'); const cid=sel?sel.value:''; if(!cid){alert('Seleziona prima la commessa / cantiere.');return;} todoAddMateriale(cid); }
+function rappArrivatoManuale(){
+  const sel=document.getElementById('mr-commessa'); const cid=sel?sel.value:''; if(!cid){alert('Seleziona prima la commessa / cantiere.');return;}
+  pickMateriale('Materiale arrivato in cantiere', it=>{
+    const c=getCommessa(cid); if(!c)return; c.todoMat=c.todoMat||[];
+    c.todoMat.push({id:'tm'+Date.now()+Math.floor(Math.random()*10000),matId:it.id||null,nome:it.nome,qty:it.qty,unita:it.unita,stato:'cantiere',ddt:_rappDDT||null,ts_cantiere:Date.now()});
+    _rappArrManual.push({nome:it.nome,qty:it.qty,unita:it.unita});
+    save(); rappRenderChecklists();
+  }, 'Aggiungi (arrivato in cantiere)');
+}
+function todoMoveMat(cid,mid,to){ const c=getCommessa(cid); const m=(c&&c.todoMat||[]).find(x=>x.id===mid); if(!m)return; m.stato=to; m['ts_'+to]=Date.now(); save(); renderTodoMat(cid); }
+function todoDelMat(cid,mid){ if(!confirm('Rimuovere questo materiale dalla lista?'))return; const c=getCommessa(cid); if(!c)return; c.todoMat=(c.todoMat||[]).filter(x=>x.id!==mid); save(); renderTodoMat(cid); }
+function apriTodoMateriali(cid){ const old=document.getElementById('todo-mat'); if(old)old.remove(); const ov=document.createElement('div'); ov.id='todo-mat'; ov.style.cssText='position:fixed;inset:0;z-index:330;background:var(--bg,#0b0d12);display:flex;flex-direction:column'; document.body.appendChild(ov); renderTodoMat(cid); }
+function renderTodoMat(cid){
+  const ov=document.getElementById('todo-mat'); if(!ov)return;
+  const c=getCommessa(cid); if(!c){ov.remove();return;} c.todoMat=c.todoMat||[];
+  const cols=TODO_COLS.map(arr=>{ const st=arr[0],lbl=arr[1],col=arr[2];
+    const items=c.todoMat.filter(m=>m.stato===st);
+    const cards=items.map(m=>todoCard(cid,m,st,col)).join('')||'<div style="font-size:12px;color:var(--text3);padding:8px 2px">—</div>';
+    const add=st==='ordinati'?'<button type="button" onclick="todoAddMateriale(\''+cid+'\')" style="margin-top:8px;width:100%;padding:11px;border:1px dashed var(--accent2,#2563eb);border-radius:10px;background:transparent;color:var(--accent,#4f9cf9);font-size:13px;font-weight:600;font-family:inherit">＋ Ordina nuovo materiale</button>':'';
+    return '<div style="flex:0 0 82vw;max-width:360px;scroll-snap-align:center;background:var(--surface,#141720);border:1px solid var(--border);border-radius:14px;padding:12px;display:flex;flex-direction:column;min-height:0">'
+      +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span style="width:11px;height:11px;border-radius:50%;background:'+col+'"></span><span style="font-weight:800;font-size:15px">'+lbl+'</span><span style="margin-left:auto;font-size:12px;color:var(--text3);background:var(--surface2,#1c2030);padding:2px 9px;border-radius:20px">'+items.length+'</span></div>'
+      +'<div style="flex:1;overflow:auto">'+cards+'</div>'+add+'</div>';
+  }).join('');
+  ov.innerHTML='<div style="display:flex;align-items:center;gap:12px;padding:16px 16px 10px;flex-shrink:0"><button type="button" onclick="document.getElementById(\'todo-mat\').remove()" style="width:40px;height:40px;border:1px solid var(--border);border-radius:12px;background:var(--surface,#141720);color:inherit;font-size:20px;font-family:inherit">←</button><div style="flex:1;min-width:0"><div style="font-size:18px;font-weight:800">📦 Materiali commessa</div><div style="font-size:12px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(c.nome)+'</div></div></div>'
+    +'<div style="flex:1;display:flex;gap:12px;overflow-x:auto;padding:0 16px 16px;scroll-snap-type:x mandatory;align-items:stretch">'+cols+'</div>'
+    +'<div style="text-align:center;font-size:11px;color:var(--text3);padding-bottom:calc(8px + env(safe-area-inset-bottom,0px))">← scorri tra le colonne →</div>';
+}
+function todoCard(cid,m,st,col){
+  const back=st==='cantiere'?'ordinati':(st==='installati'?'cantiere':null);
+  const fwd=st==='ordinati'?'cantiere':(st==='cantiere'?'installati':null);
+  const fwdLbl=st==='ordinati'?'Arrivato →':'Posato →';
+  const bs='height:34px;border:1px solid var(--border);border-radius:8px;background:var(--surface,#141720);color:inherit;font-size:13px;font-family:inherit';
+  return '<div style="background:var(--surface2,#1c2030);border:1px solid var(--border);border-left:3px solid '+col+';border-radius:10px;padding:10px;margin-bottom:8px">'
+    +'<div style="font-size:13px;font-weight:600">'+esc(m.nome)+'</div>'
+    +'<div style="font-size:11px;color:var(--text3);margin-top:2px">'+fmtNum(m.qty)+' '+esc(m.unita||'')+(m.ddt?' · 📎 DDT':'')+'</div>'
+    +'<div style="display:flex;gap:6px;margin-top:8px">'
+    +(back?'<button type="button" onclick="todoMoveMat(\''+cid+'\',\''+m.id+'\',\''+back+'\')" style="'+bs+';width:38px">←</button>':'')
+    +(fwd?'<button type="button" onclick="todoMoveMat(\''+cid+'\',\''+m.id+'\',\''+fwd+'\')" style="'+bs+';flex:1;color:'+col+';font-weight:600">'+fwdLbl+'</button>':'<span style="flex:1"></span>')
+    +'<button type="button" onclick="todoDelMat(\''+cid+'\',\''+m.id+'\')" style="'+bs+';width:38px;color:#ef4444">🗑</button>'
+    +'</div></div>';
+}
+
 function openModalRapportino(preCommessaId){
+
   state.editingRapportinoId=null;
   document.getElementById('mr-title').textContent='Nuovo Rapportino';
   document.getElementById('mr-data').value=fmt(today());
   document.getElementById('mr-stato').value='bozza';
   document.getElementById('mr-attivita').value='';
-  document.getElementById('mr-materiali').value='';
+  _rappCheck={arrivati:[],installati:[]}; _rappDDT=null; _rappArrManual=[];
   document.getElementById('mr-note').value='';
   document.getElementById('mr-clientenome').value='';
   document.getElementById('mr-del').style.display='none';
   buildRappCommesseSelect(preCommessaId||'');
+  rappRenderChecklists();
   buildRappTecniciList([]);
   buildRappOreList(collectSquadra(),{},fmt(today()));
   resetFirma();
@@ -2825,12 +3185,13 @@ function editRapportino(id){
   document.getElementById('mr-data').value=r.data||fmt(today());
   document.getElementById('mr-stato').value=r.stato||'bozza';
   document.getElementById('mr-attivita').value=r.attivita||'';
-  document.getElementById('mr-materiali').value=r.materiali||'';
+  _rappCheck={arrivati:[],installati:[]}; _rappDDT=r.ddt||null; _rappArrManual=[];
   document.getElementById('mr-note').value=r.note||'';
   document.getElementById('mr-clientenome').value=r.clienteNome||'';
   document.getElementById('mr-del').style.display=owner?'flex':'none';
   const colleghi=(r.tecniciIds||[]).filter(t=>t!==state.currentTecnicoId);
   buildRappCommesseSelect(r.commessaId||'');
+  rappRenderChecklists();
   buildRappTecniciList(colleghi);
   buildRappOreList(r.tecniciIds||collectSquadra(),r.ore||{},r.data||fmt(today()));
   resetFirma();
@@ -2872,12 +3233,16 @@ async function saveRapportino(){
 
   const tecniciIds=collectSquadra();
   const ore=raccogliOreInput();
+  const _mv=_rappApplyStati();
   const r={
     data,commessaId,stato:document.getElementById('mr-stato').value,
     tecniciIds,ore,firma:state.firmaData,
     operatore:state.currentTecnicoId,
     attivita:document.getElementById('mr-attivita').value.trim(),
-    materiali:document.getElementById('mr-materiali').value.trim(),
+    materiali:_mv.installati.map(_rappItemTxt).join('\n'),
+    matArrivati:_mv.arrivati,
+    matInstallati:_mv.installati,
+    ddt:_rappDDT||null,
     note:document.getElementById('mr-note').value.trim(),
     clienteNome:document.getElementById('mr-clientenome').value.trim(),
   };
@@ -3014,7 +3379,9 @@ function buildRapportinoHTML(r){
   </tbody>
 </table>`:'';
   const attLines=r.attivita?r.attivita.split('\n').filter(l=>l.trim()).map(l=>`<li>${esc(l.replace(/^[-·•]\s*/,''))}</li>`).join(''):'';
-  const matLines=r.materiali?r.materiali.split('\n').filter(l=>l.trim()).map(l=>`<li>${esc(l.replace(/^[-·•]\s*/,''))}</li>`).join(''):'';
+  const _us=_rappUsatiArr(r), _mn=(r.matArrivati||[]);
+  const matLines=_us.map(it=>`<li>${esc(it.nome)}${it.qty?` — ${fmtNum(it.qty)} ${esc(it.unita||'')}`:''}</li>`).join('');
+  const mancLines=_mn.map(it=>`<li>${esc(it.nome)}${it.qty?` — ${fmtNum(it.qty)} ${esc(it.unita||'')}`:''}</li>`).join('');
   const firmaImg=r.firma?`<img src="${r.firma}" style="max-width:240px;max-height:90px;display:block;margin:0 auto 4px">`:'<div style="color:#999;font-size:12px;margin-bottom:4px">(non firmato)</div>';
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Rapportino ${d}</title>
@@ -3055,6 +3422,7 @@ ${tabellaOre}
 ${attLines?`<ul>${attLines}</ul>`:'<p style="color:#999">Nessuna attività registrata</p>'}
 <h2>Materiali utilizzati</h2>
 ${matLines?`<ul>${matLines}</ul>`:'<p style="color:#999">Nessun materiale registrato</p>'}
+${mancLines?`<h2>Materiale arrivato in cantiere</h2><ul>${mancLines}</ul>`:''}
 ${r.note?`<h2>Note</h2><p style="white-space:pre-wrap">${esc(r.note)}</p>`:''}
 <div class="firma-cell">
   ${firmaImg}
@@ -3092,7 +3460,9 @@ function buildRapportinoTesto(r){
     return `• ${t.nome}: ${fmtNum(lav)}h lavoro${viag?' + '+fmtNum(viag)+'h viaggio':''}`;
   }).join('\n');
   const att=r.attivita?r.attivita.split('\n').filter(l=>l.trim()).map(l=>'• '+l.replace(/^[-·•]\s*/,'')).join('\n'):'—';
-  const mat=r.materiali?r.materiali.split('\n').filter(l=>l.trim()).map(l=>'• '+l.replace(/^[-·•]\s*/,'')).join('\n'):'—';
+  const _us=_rappUsatiArr(r);
+  const mat=_us.length?_us.map(it=>'• '+_rappItemTxt(it)).join('\n'):'—';
+  const manc=(r.matArrivati||[]).map(it=>'• '+_rappItemTxt(it)).join('\n');
   let txt=`*RAPPORTINO SIE.TEL* — N° ${r.id?r.id.slice(-6).toUpperCase():'—'}\n`;
   txt+=`📅 ${d}\n`;
   txt+=`🏗️ Cantiere: ${c?c.nome:'—'}\n`;
@@ -3102,6 +3472,7 @@ function buildRapportinoTesto(r){
   txt+=`Totali: ${fmtNum(totLav)}h lavoro · ${fmtNum(totViag)}h viaggio\n`;
   txt+=`\n*Attività svolte:*\n${att}\n`;
   txt+=`\n*Materiali utilizzati:*\n${mat}\n`;
+  if(manc) txt+=`\n*Materiale arrivato in cantiere:*\n${manc}\n`;
   if(r.note)txt+=`\n*Note:* ${r.note}\n`;
   txt+=`\n✍️ Firma cliente ${r.firma?'acquisita ✓':'non acquisita'}.`;
   txt+=`\n(PDF con firma allegato a parte tramite "Condividi file".)`;
@@ -3142,10 +3513,14 @@ async function saveRapportinoSilenzioso(){
   const data=document.getElementById('mr-data').value;
   const commessaId=document.getElementById('mr-commessa').value;
   if(!data||!commessaId)return;
+  const _ci=_rappCheckedItems();
   const r={data,commessaId,stato:document.getElementById('mr-stato').value,
     tecniciIds:collectSquadra(),ore:raccogliOreInput(),firma:state.firmaData,operatore:state.currentTecnicoId,
     attivita:document.getElementById('mr-attivita').value.trim(),
-    materiali:document.getElementById('mr-materiali').value.trim(),
+    materiali:_ci.ins.map(_rappItemTxt).join('\n'),
+    matArrivati:_ci.arr,
+    matInstallati:_ci.ins,
+    ddt:_rappDDT||null,
     note:document.getElementById('mr-note').value.trim(),
     clienteNome:document.getElementById('mr-clientenome').value.trim()};
   await netDelay(300);
@@ -3269,6 +3644,7 @@ function renderCommesse(){
         <button class="ico-btn" onclick="apriDisegni('${c.id}')" title="Disegni">📐</button>
         <button class="ico-btn" onclick="apriComputiCommessa('${c.id}')" title="Computi metrici">💶</button>
         <button class="ico-btn" onclick="apriMagCantiere('${c.id}')" title="Magazzino di cantiere">🏗️</button>
+        <button class="ico-btn" onclick="apriTodoMateriali('${c.id}')" title="Materiali: Ordinati / In cantiere / Installati">📦</button>
         <button class="ico-btn" onclick="apriBriefing('${c.id}')" title="Briefing operativo">📋</button>
         <button class="ico-btn" onclick="openModalFase('${c.id}')">＋</button>
         <button class="ico-btn" onclick="editCommessa('${c.id}')">✎</button>
@@ -3437,6 +3813,7 @@ function showMaterialeDetail(id){
   document.getElementById('sa-title').textContent=m.nome;
   let html=`<div class="sf-g"><div style="font-size:14px;font-weight:600;margin-bottom:4px">${esc(matEtichetta(m))}</div>
     <div style="font-size:12px;color:var(--text2)">${m.unita}${m.fornitore?' · Fornitore: '+m.fornitore:''}${m.codice?` · <span style="font-family:var(--mono);color:var(--accent)">${m.codice}</span>`:''}</div>
+    ${m.settore?`<div style="margin-top:6px"><span style="display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;background:var(--surface2,#1c2030);border:1px solid var(--border);color:var(--text2)">🏷️ ${esc(m.settore)}</span></div>`:''}
     ${m.note?`<div style="font-size:12px;color:var(--text3);margin-top:4px">${m.note}</div>`:''}
   </div>`;
   html+=`<div class="sf-g"><div class="sf-lbl">Scorta in magazzino</div>
@@ -3469,7 +3846,7 @@ function showMaterialeDetail(id){
     </div>`;});
     html+=`</div>`;
   }
-  html+=`<div class="act-row"><button class="btn-main" onclick="closeSheet('sheet-anag');editMateriale('${id}')">✎ Modifica</button><button class="btn-danger" onclick="deleteMateriale('${id}')">🗑</button></div>`;
+  html+=`<div class="act-row"><button class="btn-main" onclick="setTimeout(function(){closeSheet('sheet-anag');editMateriale('${id}');},0)">✎ Modifica</button><button class="btn-danger" onclick="deleteMateriale('${id}')">🗑</button></div>`;
   document.getElementById('sa-body').innerHTML=html;
   document.getElementById('sheet-anag').classList.add('open');
 }
@@ -4221,29 +4598,54 @@ function deleteTecnico(id){
 }
 
 // ── MODAL MATERIALE ──
+function getSettori(){ const base=['Elettrico','Edile','Idraulico','Meccanico','Ferramenta']; const ex=(state.settori||[]); return [...base, ...ex.filter(s=>s&&!base.some(b=>b.toLowerCase()===s.toLowerCase()))]; }
+function popolaSettori(val){
+  const sel=document.getElementById('mm-settore'); if(!sel)return;
+  const list=getSettori();
+  sel.innerHTML=list.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('')+'<option value="__new__">➕ Nuovo settore…</option>';
+  sel.value=(val&&list.includes(val))?val:list[0];
+}
+function onSettoreChange(){
+  const sel=document.getElementById('mm-settore'); if(!sel||sel.value!=='__new__')return;
+  const n=(prompt('Nome nuovo settore:','')||'').trim();
+  if(!n){ popolaSettori(getSettori()[0]); return; }
+  state.settori=state.settori||[];
+  if(!getSettori().some(s=>s.toLowerCase()===n.toLowerCase())){ state.settori.push(n); if(typeof save==='function')save(); }
+  popolaSettori(n);
+}
 function openModalMateriale(){
   state.editingMaterialeId=null;
   document.getElementById('mm-title').textContent='Nuovo Materiale';
-  ['mm-nome','mm-fornitore','mm-codice','mm-note'].forEach(id=>document.getElementById(id).value='');
+  ['mm-nome','mm-tip','mm-var','mm-fornitore','mm-codice','mm-note'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('mm-cat').value='Elettrico generico';
   document.getElementById('mm-unit').value='pz';
+  popolaSettori('Elettrico');
   document.getElementById('modal-materiale').classList.add('open');
 }
 function editMateriale(id){
   const m=getMateriale(id);if(!m)return;
   state.editingMaterialeId=id;
   document.getElementById('mm-title').textContent='Modifica Materiale';
-  document.getElementById('mm-nome').value=m.nome;
+  document.getElementById('mm-nome').value=m.nome||'';
+  document.getElementById('mm-tip').value=m.tipologia||'';
+  document.getElementById('mm-var').value=m.variante||'';
   document.getElementById('mm-cat').value=m.categoria||'Elettrico generico';
   document.getElementById('mm-unit').value=m.unita||'pz';
   document.getElementById('mm-fornitore').value=m.fornitore||'';
   document.getElementById('mm-codice').value=m.codice||'';
   document.getElementById('mm-note').value=m.note||'';
+  popolaSettori(m.settore||'Elettrico');
   document.getElementById('modal-materiale').classList.add('open');
 }
 function saveMateriale(){
-  const nome=document.getElementById('mm-nome').value.trim();if(!nome)return alert('Inserisci il nome');
-  const data={nome,categoria:document.getElementById('mm-cat').value,unita:document.getElementById('mm-unit').value,fornitore:document.getElementById('mm-fornitore').value.trim(),codice:document.getElementById('mm-codice').value.trim(),note:document.getElementById('mm-note').value.trim()};
+  let settore=document.getElementById('mm-settore').value; if(settore==='__new__')settore='';
+  const categoria=document.getElementById('mm-cat').value;
+  const tipologia=document.getElementById('mm-tip').value.trim();
+  const variante=document.getElementById('mm-var').value.trim();
+  let nome=document.getElementById('mm-nome').value.trim();
+  if(!nome) nome=[tipologia,variante].filter(Boolean).join(' ')||categoria;
+  if(!nome) return alert('Inserisci almeno tipologia, nome o categoria');
+  const data={nome,settore,categoria,tipologia,variante,unita:document.getElementById('mm-unit').value,fornitore:document.getElementById('mm-fornitore').value.trim(),codice:document.getElementById('mm-codice').value.trim(),note:document.getElementById('mm-note').value.trim()};
   if(state.editingMaterialeId){Object.assign(getMateriale(state.editingMaterialeId),data);}
   else{state.materiali.push({id:'m'+Date.now(),...data});}
   closeModal('modal-materiale');save();renderAll();
