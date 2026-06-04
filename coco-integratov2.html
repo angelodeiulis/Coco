@@ -1097,6 +1097,7 @@ textarea{resize:vertical;min-height:60px;}
         <div class="ff"><label>Tipologia</label><input type="text" id="mm-tip" placeholder="Es. FG16OR16, RJ45 cat.6, 1P+N 16A..."></div>
         <div class="ff"><label>Variante / misura</label><input type="text" id="mm-var" placeholder="Es. 3G1,5 · 2 moduli · Ø20"></div>
       </div>
+      <div class="ff"><label>Pezzo speciale (opz.)</label><input type="text" id="mm-pezzo" placeholder="Es. Salita, Curva, Derivazione, Coperchio…"></div>
       <div class="form-row">
         <div class="ff"><label>Fornitore</label><input type="text" id="mm-fornitore" placeholder="Es. ABB, Schneider, Eaton..."></div>
         <div class="ff"><label>Codice fornitore</label><input type="text" id="mm-codice" placeholder="Es. 2CDS251001R0164"></div>
@@ -1240,7 +1241,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='87';
+const APP_VERSION='88';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -1419,31 +1420,29 @@ function apriMagCantiere(cid){
   document.body.appendChild(_bfOv('magc-ov','🏗️ Magazzino cantiere — '+esc(c.nome),head+body+sto));
 }
 function arrivoCantiere(cid){
-  const cats=catCategorie(); if(!cats.length){alert('Catalogo vuoto: carica prima i materiali.');return;}
   const ss='width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:10px;font-size:15px;font-family:inherit';
   const altri=state.commesse.filter(x=>x.id!==cid);
-  const inner=`<div style="display:flex;flex-direction:column;gap:8px">
-    <div><label style="font-size:11px;color:var(--text3)">Categoria</label><select id="mc-cat" onchange="mcFillTip()" style="${ss}">${cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></div>
-    <div><label style="font-size:11px;color:var(--text3)">Tipologia</label><select id="mc-tip" onchange="mcFillVar()" style="${ss}"></select></div>
-    <div><label style="font-size:11px;color:var(--text3)">Variante / misura</label><select id="mc-var" style="${ss}"></select></div>
-    <div><label style="font-size:11px;color:var(--text3)">Quantità</label><input type="number" id="mc-qta" min="0" value="1" style="${ss}"></div>
-    <div><label style="font-size:11px;color:var(--text3)">Data</label><input type="date" id="mc-data" value="${fmt(today())}" style="${ss}"></div>
-    <div><label style="font-size:11px;color:var(--text3)">Provenienza</label><select id="mc-prov" onchange="mcProvChange()" style="${ss}"><option value="fornitore">🏢 Da fornitore</option><option value="centrale">🏬 Dal magazzino centrale</option><option value="cantiere">🏗️ Da altro cantiere</option></select></div>
-    <div id="mc-forn-wrap"><label style="font-size:11px;color:var(--text3)">Fornitore</label><input type="text" id="mc-forn" style="${ss}"></div>
-    <div id="mc-cant-wrap" style="display:none"><label style="font-size:11px;color:var(--text3)">Cantiere di provenienza</label><select id="mc-cant" style="${ss}">${altri.map(x=>`<option value="${x.id}">${esc(x.nome)}</option>`).join('')||'<option value="">(nessuno)</option>'}</select></div>
-    <input type="text" id="mc-nota" placeholder="Nota (n° bolla/DDT) opzionale" style="${ss}">
-    <button onclick="arrivoCantiereConf('${cid}')" style="width:100%;padding:13px;border:none;border-radius:10px;background:rgba(34,197,94,.9);color:#04210f;font-weight:800;font-size:15px;font-family:inherit;margin-top:4px">📥 Registra arrivo</button>
+  const inner=`<div style="display:flex;flex-direction:column">
+    ${matCampiHTML('mc2')}
+    <div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3)">Quantità</label><input type="number" id="mc-qta" min="0" value="1" style="${ss}"></div>
+    <div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3)">Data</label><input type="date" id="mc-data" value="${fmt(today())}" style="${ss}"></div>
+    <div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3)">Provenienza</label><select id="mc-prov" onchange="mcProvChange()" style="${ss}"><option value="fornitore">🏢 Da fornitore</option><option value="centrale">🏬 Dal magazzino centrale</option><option value="cantiere">🏗️ Da altro cantiere</option></select></div>
+    <div id="mc-forn-wrap" style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3)">Fornitore</label><input type="text" id="mc-forn" style="${ss}"></div>
+    <div id="mc-cant-wrap" style="display:none;margin-bottom:10px"><label style="font-size:11px;color:var(--text3)">Cantiere di provenienza</label><select id="mc-cant" style="${ss}">${altri.map(x=>`<option value="${x.id}">${esc(x.nome)}</option>`).join('')||'<option value="">(nessuno)</option>'}</select></div>
+    <input type="text" id="mc-nota" placeholder="Nota (n° bolla/DDT) opzionale" style="${ss};margin-bottom:10px">
+    <button onclick="arrivoCantiereConf('${cid}')" style="width:100%;padding:13px;border:none;border-radius:10px;background:rgba(34,197,94,.9);color:#04210f;font-weight:800;font-size:15px;font-family:inherit">📥 Registra arrivo</button>
   </div>`;
   document.body.appendChild(_bfOv('arrc-ov','📥 Arrivo a cantiere',inner));
-  mcFillTip();
 }
-function mcFillTip(){const cat=document.getElementById('mc-cat').value;document.getElementById('mc-tip').innerHTML=catTipologie(cat).map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');mcFillVar();}
-function mcFillVar(){const cat=document.getElementById('mc-cat').value,tip=document.getElementById('mc-tip').value;document.getElementById('mc-var').innerHTML=catVarianti(cat,tip).map(m=>`<option value="${m.id}">${esc(m.variante||m.nome)}</option>`).join('');}
+function mcFillTip(){}
+function mcFillVar(){}
 function mcProvChange(){const p=document.getElementById('mc-prov').value;document.getElementById('mc-forn-wrap').style.display=p==='fornitore'?'block':'none';document.getElementById('mc-cant-wrap').style.display=p==='cantiere'?'block':'none';}
 function arrivoCantiereConf(cid){
   const c=getCommessa(cid); if(!c)return; c.movMag=c.movMag||[];
-  const id=document.getElementById('mc-var').value; if(!id){alert('Scegli un articolo.');return;}
+  const d=matCampiLeggi('mc2');
+  if(!d.categoria && !d.tipologia){alert('Inserisci almeno Categoria o Tipo.');return;}
   const qty=parseFloat(document.getElementById('mc-qta').value)||0; if(qty<=0){alert('Quantità non valida.');return;}
+  const m=matTrovaOcrea(d); const id=m.id;
   const data=document.getElementById('mc-data').value||fmt(today());
   const prov=document.getElementById('mc-prov').value; const t=(typeof currentTec==='function')?currentTec():null;
   let nota='', tipo='arrivo';
@@ -3052,8 +3051,6 @@ var __matPickCb=null;
 function pickMateriale(titolo,cb,btnLabel){
   __matPickCb=cb;
   const old=document.getElementById('mat-picker'); if(old)old.remove();
-  const cats=[...new Set((state.materiali||[]).map(m=>m.categoria||'').filter(Boolean))].sort();
-  const unitaOpt=['pz','m','mt','kg','l','conf','rotolo','m²'];
   const fld='background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:11px;font-family:inherit;font-size:15px;box-sizing:border-box;width:100%';
   const ov=document.createElement('div'); ov.id='mat-picker';
   ov.style.cssText='position:fixed;inset:0;z-index:560;background:rgba(0,0,0,.6);display:flex;align-items:flex-end';
@@ -3061,34 +3058,20 @@ function pickMateriale(titolo,cb,btnLabel){
   ov.innerHTML='<div style="background:var(--surface,#141720);width:100%;border-radius:16px 16px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom,0px));max-height:90vh;overflow:auto">'
     +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><div style="flex:1;font-weight:700;font-size:16px">🛒 '+esc(titolo)+'</div>'
     +'<button type="button" onclick="document.getElementById(\'mat-picker\').remove()" style="width:34px;height:34px;border:none;border-radius:8px;background:var(--surface2,#1c2030);color:#fff;font-size:20px;font-family:inherit">×</button></div>'
-    +'<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Categoria</label><input id="mp-cat" list="mp-cats" placeholder="Es. Canalina, Cavo, Quadro…" style="'+fld+'"><datalist id="mp-cats">'+cats.map(c=>'<option value="'+esc(c)+'">').join('')+'</datalist></div>'
-    +'<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Tipologia</label><input id="mp-tip" placeholder="Es. Metallica, PVC, FG16OR16…" style="'+fld+'"></div>'
-    +'<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Variante / misura</label><input id="mp-var" placeholder="Es. 200x75, 3G2,5, 16A…" style="'+fld+'"></div>'
-    +'<div style="display:flex;gap:10px;margin-bottom:14px">'
-      +'<div style="flex:1"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Unità</label><select id="mp-unit" style="'+fld+'">'+unitaOpt.map(u=>'<option value="'+u+'">'+u+'</option>').join('')+'</select></div>'
-      +'<div style="flex:1"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Quantità</label><input id="mp-qty" type="number" inputmode="decimal" min="0" value="1" style="'+fld+'"></div>'
-    +'</div>'
+    +matCampiHTML('mp')
+    +'<div style="margin-bottom:14px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Quantità</label><input id="mp-qty" type="number" inputmode="decimal" min="0" value="1" style="'+fld+'"></div>'
     +'<button type="button" onclick="mpAdd()" style="width:100%;padding:14px;border:none;border-radius:10px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;font-family:inherit">＋ '+esc(btnLabel||'Aggiungi')+'</button>'
     +'</div>';
   document.body.appendChild(ov);
-  setTimeout(()=>{var f=document.getElementById('mp-cat'); if(f)f.focus();},120);
 }
 function mpAdd(){
-  const categoria=(document.getElementById('mp-cat').value||'').trim();
-  const tipologia=(document.getElementById('mp-tip').value||'').trim();
-  const variante=(document.getElementById('mp-var').value||'').trim();
-  const unita=document.getElementById('mp-unit').value||'pz';
+  const d=matCampiLeggi('mp');
   const q=parseFloat((document.getElementById('mp-qty').value||'').replace(',','.'))||0;
-  if(!categoria && !tipologia){ alert('Inserisci almeno Categoria o Tipologia.'); return; }
+  if(!d.categoria && !d.tipologia){ alert('Inserisci almeno Categoria o Tipo.'); return; }
   if(q<=0){ alert('Inserisci una quantità maggiore di zero.'); return; }
-  const nome=[categoria,tipologia,variante].filter(Boolean).join(' · ');
-  let matId=null;
-  const ex=(state.materiali||[]).find(m=>([m.categoria,m.tipologia,m.variante].filter(Boolean).join(' · ').toLowerCase()===nome.toLowerCase())||((m.nome||'').toLowerCase()===nome.toLowerCase()));
-  if(ex){ matId=ex.id; if(!ex.unita)ex.unita=unita; }
-  else { matId='m'+Date.now(); state.materiali=state.materiali||[]; state.materiali.push({id:matId,nome,categoria,tipologia,variante,unita,fornitore:'',codice:'',note:''}); }
-  if(typeof save==='function')save();
+  const m=matTrovaOcrea(d); if(typeof save==='function')save();
   const cb=__matPickCb; const ov=document.getElementById('mat-picker'); if(ov)ov.remove();
-  if(cb)cb({id:matId,nome,qty:q,unita});
+  if(cb)cb({id:m.id,nome:matEtichetta(m),qty:q,unita:m.unita||d.unita||'pz'});
 }
 
 // ── To-Do materiali per commessa (Kanban 3 stati) ──
@@ -4402,7 +4385,36 @@ function toggleTecnicoSel(id,el){
 function catCategorie(){ const s=[]; state.materiali.forEach(m=>{const c=m.categoria||'Varie'; if(!s.includes(c))s.push(c);}); return s; }
 function catTipologie(cat){ const s=[]; state.materiali.forEach(m=>{ if((m.categoria||'Varie')!==cat)return; const t=m.tipologia||m.nome||''; if(t&&!s.includes(t))s.push(t);}); return s; }
 function catVarianti(cat,tip){ return state.materiali.filter(m=>(m.categoria||'Varie')===cat && (m.tipologia||m.nome||'')===tip); }
-function matEtichetta(m){ if(!m)return''; return [m.categoria,m.tipologia,m.variante].filter(Boolean).join(' · ')||m.nome||'—'; }
+function matEtichetta(m){ if(!m)return''; return [m.categoria,m.tipologia,m.variante,m.pezzo].filter(Boolean).join(' · ')||m.nome||'—'; }
+/* ── Form materiale condiviso (Settore→Categoria→Tipo→Variante→Pezzo speciale→Unità) ── */
+var PEZZI_BASE=['Salita','Discesa','Curva','Angolo','Derivazione a T','Giunzione','Riduzione','Coperchio','Terminale','Flangia','Staffa','Manicotto','Tappo'];
+function _matSugg(field){ const s=new Set(); (state.materiali||[]).forEach(m=>{ if(m[field]) s.add(m[field]); }); return [...s].sort(); }
+function matCampiHTML(p,v){
+  v=v||{};
+  const fld='background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:11px;font-family:inherit;font-size:15px;box-sizing:border-box;width:100%';
+  const dl=(id,arr)=>'<datalist id="'+id+'">'+arr.map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist>';
+  const pezzi=[...new Set(PEZZI_BASE.concat(_matSugg('pezzo')))];
+  const unitaOpt=['pz','m','mt','kg','l','conf','rotolo','m²'];
+  const fields=[['set','Settore',(typeof getSettori==='function'?getSettori():[]),(v.settore||'Elettrico')],
+    ['cat','Categoria',_matSugg('categoria'),(v.categoria||'')],
+    ['tip','Tipo / Tipologia',_matSugg('tipologia'),(v.tipologia||'')],
+    ['var','Variante / misura',_matSugg('variante'),(v.variante||'')],
+    ['pezzo','Pezzo speciale (opz.)',pezzi,(v.pezzo||'')]];
+  let h='';
+  fields.forEach(f=>{ const id=p+'-'+f[0],did=p+'-dl-'+f[0];
+    h+='<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">'+f[1]+'</label><input id="'+id+'" list="'+did+'" value="'+esc(f[3])+'" placeholder="scegli o scrivi…" style="'+fld+'">'+dl(did,f[2])+'</div>'; });
+  h+='<div style="margin-bottom:10px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Unità</label><select id="'+p+'-unit" style="'+fld+'">'+unitaOpt.map(u=>'<option value="'+u+'"'+(((v.unita||'pz')===u)?' selected':'')+'>'+u+'</option>').join('')+'</select></div>';
+  return h;
+}
+function matCampiLeggi(p){ const g=s=>{const e=document.getElementById(p+'-'+s);return e?(e.value||'').trim():'';}; return {settore:g('set'),categoria:g('cat'),tipologia:g('tip'),variante:g('var'),pezzo:g('pezzo'),unita:(document.getElementById(p+'-unit')||{}).value||'pz'}; }
+function matComponiNome(d){ return [d.categoria,d.tipologia,d.variante,d.pezzo].filter(Boolean).join(' · '); }
+function matTrovaOcrea(d){
+  const nome=matComponiNome(d); if(!nome) return null;
+  let ex=(state.materiali||[]).find(m=>matEtichetta(m).toLowerCase()===nome.toLowerCase()||(m.nome||'').toLowerCase()===nome.toLowerCase());
+  if(ex){ if(!ex.unita&&d.unita)ex.unita=d.unita; if(!ex.settore&&d.settore)ex.settore=d.settore; if(!ex.pezzo&&d.pezzo)ex.pezzo=d.pezzo; return ex; }
+  ex={id:'m'+Date.now()+Math.floor(Math.random()*1000),nome,settore:d.settore,categoria:d.categoria,tipologia:d.tipologia,variante:d.variante,pezzo:d.pezzo,unita:d.unita||'pz',fornitore:'',codice:'',note:''};
+  state.materiali=state.materiali||[]; state.materiali.push(ex); return ex;
+}
 
 // ── PICKER a cascata per aggiungere materiale alla fase ──
 function openMatPicker(){
@@ -4616,7 +4628,7 @@ function onSettoreChange(){
 function openModalMateriale(){
   state.editingMaterialeId=null;
   document.getElementById('mm-title').textContent='Nuovo Materiale';
-  ['mm-nome','mm-tip','mm-var','mm-fornitore','mm-codice','mm-note'].forEach(id=>document.getElementById(id).value='');
+  ['mm-nome','mm-tip','mm-var','mm-pezzo','mm-fornitore','mm-codice','mm-note'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('mm-cat').value='Elettrico generico';
   document.getElementById('mm-unit').value='pz';
   popolaSettori('Elettrico');
@@ -4629,6 +4641,7 @@ function editMateriale(id){
   document.getElementById('mm-nome').value=m.nome||'';
   document.getElementById('mm-tip').value=m.tipologia||'';
   document.getElementById('mm-var').value=m.variante||'';
+  document.getElementById('mm-pezzo').value=m.pezzo||'';
   document.getElementById('mm-cat').value=m.categoria||'Elettrico generico';
   document.getElementById('mm-unit').value=m.unita||'pz';
   document.getElementById('mm-fornitore').value=m.fornitore||'';
@@ -4642,10 +4655,11 @@ function saveMateriale(){
   const categoria=document.getElementById('mm-cat').value;
   const tipologia=document.getElementById('mm-tip').value.trim();
   const variante=document.getElementById('mm-var').value.trim();
+  const pezzo=document.getElementById('mm-pezzo').value.trim();
   let nome=document.getElementById('mm-nome').value.trim();
-  if(!nome) nome=[tipologia,variante].filter(Boolean).join(' ')||categoria;
-  if(!nome) return alert('Inserisci almeno tipologia, nome o categoria');
-  const data={nome,settore,categoria,tipologia,variante,unita:document.getElementById('mm-unit').value,fornitore:document.getElementById('mm-fornitore').value.trim(),codice:document.getElementById('mm-codice').value.trim(),note:document.getElementById('mm-note').value.trim()};
+  if(!nome) nome=[categoria,tipologia,variante,pezzo].filter(Boolean).join(' · ')||categoria;
+  if(!nome) return alert('Inserisci almeno categoria, tipologia o nome');
+  const data={nome,settore,categoria,tipologia,variante,pezzo,unita:document.getElementById('mm-unit').value,fornitore:document.getElementById('mm-fornitore').value.trim(),codice:document.getElementById('mm-codice').value.trim(),note:document.getElementById('mm-note').value.trim()};
   if(state.editingMaterialeId){Object.assign(getMateriale(state.editingMaterialeId),data);}
   else{state.materiali.push({id:'m'+Date.now(),...data});}
   closeModal('modal-materiale');save();renderAll();
