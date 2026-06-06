@@ -1251,7 +1251,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='90';
+const APP_VERSION='91';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -7327,6 +7327,8 @@ function _tbsRischioLbl(r){ return r==='alto'?'🔴 Rischio alto':(r==='basso'?'
 /* ── Requisito 1 — IMPOSTAZIONI AI (chiave Gemini: salva/modifica/elimina) ── */
 function tbsImpostazioniAI(){
   if(typeof closeHdrMenu==='function') closeHdrMenu();
+  if(typeof CocoStore==='undefined' || typeof CocoAI==='undefined'){ try{ alert('Moduli AI non caricati. Ricarica la pagina forzando l\'aggiornamento (svuota la cache del sito).'); }catch(e){} return; }
+  try{
   const has = CocoAI.hasKey();
   const masked = has ? '••••••••••••' + (CocoStore.getApiKey().slice(-4)) : '';
   const model = CocoStore.getModel();
@@ -7349,6 +7351,7 @@ function tbsImpostazioniAI(){
       <button onclick="tbsEliminaApiKey()" ${has?'':'disabled'} style="flex:1;padding:12px;border:none;border-radius:12px;background:transparent;color:${has?'#ef4444':'var(--text3,#666)'};font-size:14px;font-family:inherit">🗑 Elimina</button>
     </div>`;
   document.body.appendChild(_bfOv('tbs-ai-ov','⚙️ Impostazioni AI', inner));
+  }catch(e){ try{ alert('Errore Impostazioni AI: '+(e&&e.message||e)); }catch(_){} }
 }
 function tbsSalvaApiKey(){            // saveApiKey()
   const v=(document.getElementById('tbs-apikey').value||'').trim();
@@ -7374,6 +7377,8 @@ function deleteApiKey(){ return CocoStore.delApiKey(); }
 
 /* ── Entry point dalla commessa (Requisito 2): lista diagnosi + nuova ── */
 function tbsApriCommessa(cid){
+  if(typeof CocoStore==='undefined'){ try{ alert('Moduli AI non caricati. Ricarica la pagina forzando l\'aggiornamento.'); }catch(e){} return; }
+  try{
   const c=(typeof getCommessa==='function')?getCommessa(cid):null;
   const list=CocoStore.byCommessa(cid);
   let body=`<button onclick="document.getElementById('tbs-cm-ov').remove();tbsNuovaDiagnosi('${cid}')"
@@ -7384,6 +7389,7 @@ function tbsApriCommessa(cid){
     body+='<div class="card"><div class="inner-list">'+list.map(d=>_tbsRigaDiag(d,true)).join('')+'</div></div>';
   }
   document.body.appendChild(_bfOv('tbs-cm-ov','🔧 Troubleshooting — '+esc(c?c.nome:'Commessa'), body));
+  }catch(e){ try{ alert('Errore Troubleshooting: '+(e&&e.message||e)); }catch(_){} }
 }
 
 // riga riepilogo di una diagnosi (usata in lista commessa e nello storico)
@@ -7588,7 +7594,20 @@ function tbsApriDiagnosi(diagId){
 
 /* ── Requisito 3 — VISTA "Storico Diagnosi" (tutte le commesse) ── */
 function diagRenderStorico(){
-  const el=document.getElementById('diagnosi-inner'); if(!el) return;
+  // 1) trova (o ricrea) il contenitore: mai uscire in silenzio
+  let el=document.getElementById('diagnosi-inner');
+  if(!el){
+    const v=document.getElementById('view-diagnosi');
+    if(v){ el=document.createElement('div'); el.id='diagnosi-inner'; el.className='page-pad'; v.appendChild(el); }
+  }
+  if(!el){ try{ alert('Storico Diagnosi: contenitore non trovato nella pagina.'); }catch(e){} return; }
+  // 2) i moduli AI devono essere inizializzati
+  if(typeof CocoStore==='undefined' || typeof CocoAI==='undefined' || typeof CocoDiag==='undefined'){
+    el.innerHTML='<div class="empty-state"><div class="empty-big">⚠️</div>Moduli AI non caricati. Ricarica la pagina forzando l\'aggiornamento (Ctrl+F5 o svuota cache del sito).</div>';
+    return;
+  }
+  // 3) costruzione protetta: qualsiasi errore viene mostrato a schermo
+  try{
   const list=CocoStore.all();
   let html=`<div style="display:flex;gap:8px;margin-bottom:10px">
       <button onclick="tbsImpostazioniAI()" style="flex:1;padding:12px;border:1px solid var(--border,#2a2f42);border-radius:12px;background:var(--surface,#141720);color:var(--text,#fff);font-size:14px;font-family:inherit">⚙️ Impostazioni AI ${CocoAI.hasKey()?'✓':'⚠️'}</button>
@@ -7606,12 +7625,21 @@ function diagRenderStorico(){
     });
   }
   el.innerHTML=html;
+  }catch(e){
+    el.innerHTML='<div class="empty-state"><div class="empty-big">⚠️</div>Errore Storico Diagnosi:<br><span style="font-size:12px;color:#fca5a5">'+(typeof esc==='function'?esc(String(e&&e.message||e)):String(e&&e.message||e))+'</span></div>';
+  }
 }
-// apre direttamente la vista storico
-function tbsStorico(){ if(typeof closeHdrMenu==='function') closeHdrMenu(); setView('diagnosi', document.getElementById('nav-diagnosi')||null); }
+// apre direttamente la vista storico (render esplicito + cattura errori)
+function tbsStorico(){
+  try{ if(typeof closeHdrMenu==='function') closeHdrMenu(); }catch(e){}
+  try{ setView('diagnosi', document.getElementById('nav-diagnosi')||null); }catch(e){}
+  try{ diagRenderStorico(); }catch(e){ try{ alert('Errore apertura Storico Diagnosi: '+(e&&e.message||e)); }catch(_){} }
+}
 
 /* ── Entry point per la MODALITÀ CAMPO: scegli la commessa, poi le sue diagnosi ── */
 function tbsCampo(){
+  if(typeof CocoAI==='undefined'){ try{ alert('Moduli AI non caricati. Ricarica la pagina forzando l\'aggiornamento.'); }catch(e){} return; }
+  try{
   if(!CocoAI.hasKey()){
     if(confirm('Configurare prima la chiave Gemini nelle Impostazioni AI.\n\nAprire ora le Impostazioni AI?')) tbsImpostazioniAI();
     return;
@@ -7626,6 +7654,7 @@ function tbsCampo(){
       <span style="display:block;font-size:12px;color:var(--text3,#b0b8cc)">${esc(c.cliente||'—')}</span></button>`).join('');
   }
   document.body.appendChild(_bfOv('tbs-campo-ov','🔧 Troubleshooting — scegli il lavoro', body));
+  }catch(e){ try{ alert('Errore Troubleshooting: '+(e&&e.message||e)); }catch(_){} }
 }
 
 renderOggi = renderHome;
