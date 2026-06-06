@@ -68,6 +68,10 @@ button{font-family:var(--sans);}
 .c-acts{display:flex;gap:6px;flex-shrink:0;}
 .ico-btn{width:32px;height:32px;border-radius:7px;background:var(--surface2);border:1px solid var(--border);color:var(--text2);font-size:15px;display:flex;align-items:center;justify-content:center;cursor:pointer;}
 .tog{font-size:11px;color:var(--text3);transition:transform .2s;flex-shrink:0;}
+/* Lista commesse: la fila di icone va su una riga propria sotto il nome (evita che copra il titolo) */
+#commesse-inner .card-hdr{flex-wrap:wrap;}
+#commesse-inner .c-acts{flex-basis:100%;flex-shrink:1;flex-wrap:wrap;order:3;justify-content:flex-start;margin-top:8px;}
+#commesse-inner .tog{order:2;margin-left:auto;}
 .tog.open{transform:rotate(90deg);}
 .inner-list{border-top:1px solid var(--border);}
 .row-item{padding:11px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;cursor:pointer;background:var(--bg);}
@@ -1251,7 +1255,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='91';
+const APP_VERSION='92';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -7609,7 +7613,8 @@ function diagRenderStorico(){
   // 3) costruzione protetta: qualsiasi errore viene mostrato a schermo
   try{
   const list=CocoStore.all();
-  let html=`<div style="display:flex;gap:8px;margin-bottom:10px">
+  let html=`<button onclick="tbsNuovaDiag()" style="width:100%;padding:14px;border:none;border-radius:12px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;font-family:inherit;margin-bottom:8px">➕ Nuova diagnosi</button>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
       <button onclick="tbsImpostazioniAI()" style="flex:1;padding:12px;border:1px solid var(--border,#2a2f42);border-radius:12px;background:var(--surface,#141720);color:var(--text,#fff);font-size:14px;font-family:inherit">⚙️ Impostazioni AI ${CocoAI.hasKey()?'✓':'⚠️'}</button>
     </div>`;
   if(!list.length){
@@ -7634,6 +7639,28 @@ function tbsStorico(){
   try{ if(typeof closeHdrMenu==='function') closeHdrMenu(); }catch(e){}
   try{ setView('diagnosi', document.getElementById('nav-diagnosi')||null); }catch(e){}
   try{ diagRenderStorico(); }catch(e){ try{ alert('Errore apertura Storico Diagnosi: '+(e&&e.message||e)); }catch(_){} }
+}
+
+/* ── Nuova diagnosi dallo Storico: scegli prima la commessa (Requisito 2) ── */
+function tbsNuovaDiag(){
+  if(typeof CocoAI==='undefined' || typeof CocoStore==='undefined'){ try{ alert('Moduli AI non caricati. Ricarica la pagina forzando l\'aggiornamento.'); }catch(e){} return; }
+  try{
+  if(!CocoAI.hasKey()){
+    if(confirm('Configurare prima la chiave Gemini nelle Impostazioni AI.\n\nAprire ora le Impostazioni AI?')) tbsImpostazioniAI();
+    return;
+  }
+  const comm=(state.commesse||[]);
+  let body;
+  if(!comm.length){
+    body='<div class="empty-state" style="padding:18px 10px"><div class="empty-big">📋</div>Nessuna commessa disponibile.</div>';
+  } else {
+    body='<div style="font-size:13px;color:var(--text3,#b0b8cc);margin-bottom:10px">Scegli il lavoro a cui collegare la diagnosi:</div>'+
+      comm.map(c=>`<button onclick="document.getElementById('tbs-pick-ov').remove();tbsApriCommessa('${c.id}')" style="${TBS_BTN}">
+        <span style="display:block;font-size:16px;font-weight:700">${esc(c.nome)}</span>
+        <span style="display:block;font-size:12px;color:var(--text3,#b0b8cc)">${esc(c.cliente||'—')}</span></button>`).join('');
+  }
+  document.body.appendChild(_bfOv('tbs-pick-ov','🔧 Nuova diagnosi — scegli il lavoro', body));
+  }catch(e){ try{ alert('Errore: '+(e&&e.message||e)); }catch(_){} }
 }
 
 /* ── Entry point per la MODALITÀ CAMPO: scegli la commessa, poi le sue diagnosi ── */
