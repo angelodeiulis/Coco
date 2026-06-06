@@ -1255,7 +1255,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='94';
+const APP_VERSION='95';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -3751,8 +3751,9 @@ const CocoStore = (function(){
   }
 
   // ── Chiave & modello AI (Requisito 1) ──
-  function getApiKey(){ try{ return (localStorage.getItem(AIKEY_LS)||'').trim(); }catch(e){ return ''; } }
-  function setApiKey(k){ try{ localStorage.setItem(AIKEY_LS,(k||'').trim()); return true; }catch(e){ return false; } }
+  function _clean(k){ return (k||'').replace(/[^A-Za-z0-9_\-]/g,''); }   // toglie spazi/caratteri invisibili da copia-incolla
+  function getApiKey(){ try{ return _clean(localStorage.getItem(AIKEY_LS)||''); }catch(e){ return ''; } }
+  function setApiKey(k){ try{ localStorage.setItem(AIKEY_LS,_clean(k)); return true; }catch(e){ return false; } }
   function delApiKey(){ try{ localStorage.removeItem(AIKEY_LS); return true; }catch(e){ return false; } }
   function getModel(){ try{ var m=localStorage.getItem(MODEL_LS)||DEFAULT_MODEL; if(/gemini-1\.5|gemini-2\.0/.test(m)) m=DEFAULT_MODEL; return m; }catch(e){ return DEFAULT_MODEL; } }
   function setModel(m){ try{ localStorage.setItem(MODEL_LS, m||DEFAULT_MODEL); }catch(e){} }
@@ -4049,6 +4050,7 @@ function tbsImpostazioniAI(){
       ${opt('gemini-2.5-flash')}${opt('gemini-2.5-pro')}${opt('gemini-2.5-flash-lite')}${opt('gemini-2.0-flash')}
     </select>
     <button onclick="tbsSalvaApiKey()" style="width:100%;padding:14px;border:none;border-radius:12px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;font-family:inherit;margin-bottom:8px">💾 Salva</button>
+    <button onclick="tbsProvaChiave()" style="width:100%;padding:12px;border:1px solid var(--accent,#4f9cf9);border-radius:12px;background:transparent;color:var(--accent,#4f9cf9);font-weight:600;font-size:14px;font-family:inherit;margin-bottom:8px">🔍 Prova chiave</button>
     <div style="display:flex;gap:8px">
       <button onclick="tbsModificaApiKey()" style="flex:1;padding:12px;border:1px solid var(--border,#2a2f42);border-radius:12px;background:transparent;color:var(--text,#fff);font-size:14px;font-family:inherit">✎ Modifica</button>
       <button onclick="tbsEliminaApiKey()" ${has?'':'disabled'} style="flex:1;padding:12px;border:none;border-radius:12px;background:transparent;color:${has?'#ef4444':'var(--text3,#666)'};font-size:14px;font-family:inherit">🗑 Elimina</button>
@@ -4065,6 +4067,25 @@ function tbsSalvaApiKey(){            // saveApiKey()
 }
 function tbsModificaApiKey(){         // edit: pulisce il campo per reinserire
   const i=document.getElementById('tbs-apikey'); if(i){ i.value=''; i.placeholder='Inserisci la nuova chiave…'; i.focus(); }
+}
+// Prova la chiave con una chiamata leggera (lista modelli): isola la validità della chiave
+async function tbsProvaChiave(){
+  try{
+    const i=document.getElementById('tbs-apikey'); const v=i?(i.value||'').trim():'';
+    if(v && !/^•+/.test(v)) CocoStore.setApiKey(v);
+    const ms=document.getElementById('tbs-model'); if(ms) CocoStore.setModel(ms.value);
+    const key=CocoStore.getApiKey();
+    if(!key){ alert('Inserisci prima la chiave Gemini, poi premi Prova chiave.'); return; }
+    const res=await fetch('https://generativelanguage.googleapis.com/v1beta/models', { headers:{'x-goog-api-key':key} });
+    if(res.ok){
+      alert('✅ Chiave valida! Gemini risponde correttamente.\n\nOra puoi salvare e avviare le diagnosi.');
+    } else {
+      let t=''; try{ t=(await res.text()).slice(0,250); }catch(e){}
+      let hint='';
+      if(res.status===401||res.status===403) hint='\n\nLa chiave non è accettata da Google. Creane una nuova su aistudio.google.com/apikey e assicurati che NON abbia restrizioni.';
+      alert('❌ Chiave rifiutata (HTTP '+res.status+').'+hint+'\n\nDettaglio: '+t);
+    }
+  }catch(e){ alert('Errore di connessione durante la prova: '+(e&&e.message||e)); }
 }
 function tbsEliminaApiKey(){          // deleteApiKey()
   if(!CocoAI.hasKey()) return;
