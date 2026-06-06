@@ -1255,7 +1255,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='95';
+const APP_VERSION='96';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -3896,7 +3896,7 @@ const CocoAI = (function(){
     const key=CocoStore.getApiKey();
     if(!key){ const err=new Error('Configurare prima la chiave Gemini nelle Impostazioni AI'); err.code='NO_KEY'; throw err; }
     const model=CocoStore.getModel();
-    const url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent';
+    const url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent?key='+encodeURIComponent(key);
     const body={
       system_instruction:{ parts:[{ text: systemPrompt() }] },
       contents: buildContents(diag, nuovaRisposta, imgDataUrl),
@@ -3904,7 +3904,7 @@ const CocoAI = (function(){
     };
     let res;
     try{
-      res=await fetch(url,{ method:'POST', headers:{'Content-Type':'application/json','x-goog-api-key':key}, body:JSON.stringify(body) });
+      res=await fetch(url,{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
     }catch(e){ throw new Error('Errore di connessione a Gemini: '+(e.message||e)); }
     if(!res.ok){
       let det=''; try{ det=(await res.text()).slice(0,300); }catch(e){}
@@ -4076,14 +4076,16 @@ async function tbsProvaChiave(){
     const ms=document.getElementById('tbs-model'); if(ms) CocoStore.setModel(ms.value);
     const key=CocoStore.getApiKey();
     if(!key){ alert('Inserisci prima la chiave Gemini, poi premi Prova chiave.'); return; }
-    const res=await fetch('https://generativelanguage.googleapis.com/v1beta/models', { headers:{'x-goog-api-key':key} });
+    const fp='Chiave testata → lunghezza '+key.length+', inizia con "'+key.slice(0,4)+'", finisce con "'+key.slice(-4)+'"';
+    const res=await fetch('https://generativelanguage.googleapis.com/v1beta/models?key='+encodeURIComponent(key));
     if(res.ok){
-      alert('✅ Chiave valida! Gemini risponde correttamente.\n\nOra puoi salvare e avviare le diagnosi.');
+      alert('✅ Chiave valida! Gemini risponde correttamente.\n\n'+fp+'\n\nOra puoi salvare e avviare le diagnosi.');
     } else {
-      let t=''; try{ t=(await res.text()).slice(0,250); }catch(e){}
+      let t=''; try{ t=(await res.text()).slice(0,200); }catch(e){}
       let hint='';
-      if(res.status===401||res.status===403) hint='\n\nLa chiave non è accettata da Google. Creane una nuova su aistudio.google.com/apikey e assicurati che NON abbia restrizioni.';
-      alert('❌ Chiave rifiutata (HTTP '+res.status+').'+hint+'\n\nDettaglio: '+t);
+      if(/API_KEY_INVALID/.test(t)) hint='\n\nLa chiave salvata nell\'app non coincide con quella vera. Confronta l\'impronta qui sopra con la tua chiave di AI Studio: se è diversa, premi Elimina, poi Modifica e reincolla la chiave intera.';
+      else if(res.status===401||res.status===403) hint='\n\nChiave non autorizzata: creane una nuova su aistudio.google.com/apikey senza restrizioni.';
+      alert('❌ Chiave rifiutata (HTTP '+res.status+').\n\n'+fp+hint+'\n\nDettaglio: '+t);
     }
   }catch(e){ alert('Errore di connessione durante la prova: '+(e&&e.message||e)); }
 }
