@@ -1255,7 +1255,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='99';
+const APP_VERSION='101';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -3900,6 +3900,33 @@ const CocoAI = (function(){
     return obj;
   }
 
+  // helper: attende ms millisecondi
+  function _sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+  // POST a Gemini con RITENTATIVO automatico sugli errori temporanei (503 sovraccarico, 500, 429).
+  // Gli errori permanenti (400/401/403/404) NON vengono ritentati: messaggio chiaro subito.
+  async function _postWithRetry(url, body){
+    const MAX=2;                 // tentativi extra oltre al primo (totale 3)
+    for(let attempt=0; attempt<=MAX; attempt++){
+      let res;
+      try{
+        res=await fetch(url,{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+      }catch(e){
+        if(attempt<MAX){ await _sleep(800*(attempt+1)); continue; }   // problema di rete: riprova
+        throw new Error('Errore di connessione a Gemini: '+(e.message||e));
+      }
+      if(res.ok) return res;
+      let det=''; try{ det=(await res.text()).slice(0,300); }catch(e){}
+      // temporanei → riprova con piccola pausa crescente
+      if((res.status===503||res.status===500||res.status===429) && attempt<MAX){ await _sleep(1000*(attempt+1)); continue; }
+      // permanenti (o tentativi esauriti) → messaggio chiaro
+      if(res.status===400 && /API key/i.test(det)) throw new Error('Chiave Gemini non valida (HTTP 400). Controlla la chiave nelle Impostazioni AI.');
+      if(res.status===401||res.status===403) throw new Error('Chiave Gemini non valida o non autorizzata (HTTP '+res.status+'). Verifica la chiave nelle Impostazioni AI.');
+      if(res.status===404) throw new Error('Modello non trovato (HTTP 404). Nelle Impostazioni AI scegli un modello attuale (es. gemini-2.5-flash).');
+      if(res.status===503||res.status===429||res.status===500) throw new Error('Gemini è temporaneamente sovraccarico (HTTP '+res.status+'). Ho già riprovato alcune volte: attendi un minuto e riprova, oppure nelle Impostazioni AI scegli un altro modello (es. gemini-2.0-flash).');
+      throw new Error('Gemini ha risposto con errore HTTP '+res.status+(det?(': '+det):''));
+    }
+  }
+
   // — Requisiti 1/5/7 — Chiamata a Gemini. Ritorna l'oggetto JSON validato.
   async function ask(diag, nuovaRisposta, imgDataUrl, pdfData){
     const key=CocoStore.getApiKey();
@@ -3911,17 +3938,7 @@ const CocoAI = (function(){
       contents: buildContents(diag, nuovaRisposta, imgDataUrl, pdfData),
       generationConfig:{ response_mime_type:'application/json', temperature:0.4, maxOutputTokens:1024 }
     };
-    let res;
-    try{
-      res=await fetch(url,{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
-    }catch(e){ throw new Error('Errore di connessione a Gemini: '+(e.message||e)); }
-    if(!res.ok){
-      let det=''; try{ det=(await res.text()).slice(0,300); }catch(e){}
-      if(res.status===400 && /API key/i.test(det)) throw new Error('Chiave Gemini non valida (HTTP 400). Controlla la chiave nelle Impostazioni AI.');
-      if(res.status===401||res.status===403) throw new Error('Chiave Gemini non valida o non autorizzata (HTTP '+res.status+').\n\nVerifica nelle Impostazioni AI:\n• la chiave è completa e senza spazi\n• è una chiave di Google AI Studio (aistudio.google.com/apikey)\n• la chiave non ha restrizioni che bloccano questo sito');
-      if(res.status===404) throw new Error('Modello non trovato (HTTP 404). Nelle Impostazioni AI scegli un modello attuale (es. gemini-2.5-flash).');
-      throw new Error('Gemini ha risposto con errore HTTP '+res.status+(det?(': '+det):''));
-    }
+    const res=await _postWithRetry(url, body);
     const data=await res.json();
     const cand=(data.candidates||[])[0]||{};
     const txt=((cand.content||{}).parts||[]).map(p=>p.text||'').join('').trim();
@@ -3940,17 +3957,7 @@ const CocoAI = (function(){
       generationConfig:{ temperature:0.4, maxOutputTokens:1024 }
     };
     if(systemText) body.system_instruction={ parts:[{ text:systemText }] };
-    let res;
-    try{
-      res=await fetch(url,{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
-    }catch(e){ throw new Error('Errore di connessione a Gemini: '+(e.message||e)); }
-    if(!res.ok){
-      let det=''; try{ det=(await res.text()).slice(0,300); }catch(e){}
-      if(res.status===400 && /API key/i.test(det)) throw new Error('Chiave Gemini non valida (HTTP 400). Controlla la chiave nelle Impostazioni AI.');
-      if(res.status===401||res.status===403) throw new Error('Chiave Gemini non valida o non autorizzata (HTTP '+res.status+'). Verifica la chiave nelle Impostazioni AI.');
-      if(res.status===404) throw new Error('Modello non trovato (HTTP 404). Scegli un modello attuale nelle Impostazioni AI (es. gemini-2.5-flash).');
-      throw new Error('Gemini ha risposto con errore HTTP '+res.status+(det?(': '+det):''));
-    }
+    const res=await _postWithRetry(url, body);
     const data=await res.json();
     const cand=(data.candidates||[])[0]||{};
     return ((cand.content||{}).parts||[]).map(p=>p.text||'').join('').trim();
@@ -5355,7 +5362,9 @@ function openMatPicker(){
       <button onclick="matPickerAdd()" style="width:100%;padding:13px;border:none;border-radius:10px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;font-family:inherit;margin-top:4px">➕ Aggiungi alla fase</button>
       <button onclick="nuovoArticoloCatalogo()" style="width:100%;padding:11px;border:none;border-radius:10px;background:transparent;color:var(--accent,#4f9cf9);font-size:13px;font-family:inherit">➕ Articolo non in elenco…</button>
     </div>`;
-  document.body.appendChild(_bfOv('mat-pick-ov','📦 Aggiungi materiale',inner));
+  const _mpOv=_bfOv('mat-pick-ov','📦 Aggiungi materiale',inner);
+  _mpOv.style.zIndex='450';   // il modulo fase è a z-index 400: senza questo il selettore si apriva DIETRO (invisibile)
+  document.body.appendChild(_mpOv);
   mpFillTip();
 }
 function mpFillTip(){
