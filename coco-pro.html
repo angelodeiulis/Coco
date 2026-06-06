@@ -1255,7 +1255,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='93';
+const APP_VERSION='94';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -3732,7 +3732,7 @@ function cf_goToday(){
 const CocoStore = (function(){
   const AIKEY_LS  = 'coco_gemini_key';    // chiave API Gemini (mai nel sorgente!)
   const MODEL_LS  = 'coco_gemini_model';   // modello Gemini scelto
-  const DEFAULT_MODEL = 'gemini-2.0-flash';
+  const DEFAULT_MODEL = 'gemini-2.5-flash';
 
   // ── Diagnosi (CRUD) ──
   function _arr(){ state.diagnosi = state.diagnosi || []; return state.diagnosi; }
@@ -3754,7 +3754,7 @@ const CocoStore = (function(){
   function getApiKey(){ try{ return (localStorage.getItem(AIKEY_LS)||'').trim(); }catch(e){ return ''; } }
   function setApiKey(k){ try{ localStorage.setItem(AIKEY_LS,(k||'').trim()); return true; }catch(e){ return false; } }
   function delApiKey(){ try{ localStorage.removeItem(AIKEY_LS); return true; }catch(e){ return false; } }
-  function getModel(){ try{ return localStorage.getItem(MODEL_LS)||DEFAULT_MODEL; }catch(e){ return DEFAULT_MODEL; } }
+  function getModel(){ try{ var m=localStorage.getItem(MODEL_LS)||DEFAULT_MODEL; if(/gemini-1\.5|gemini-2\.0/.test(m)) m=DEFAULT_MODEL; return m; }catch(e){ return DEFAULT_MODEL; } }
   function setModel(m){ try{ localStorage.setItem(MODEL_LS, m||DEFAULT_MODEL); }catch(e){} }
 
   return { all, byCommessa, get, upsert, remove,
@@ -3895,7 +3895,7 @@ const CocoAI = (function(){
     const key=CocoStore.getApiKey();
     if(!key){ const err=new Error('Configurare prima la chiave Gemini nelle Impostazioni AI'); err.code='NO_KEY'; throw err; }
     const model=CocoStore.getModel();
-    const url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent?key='+encodeURIComponent(key);
+    const url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent';
     const body={
       system_instruction:{ parts:[{ text: systemPrompt() }] },
       contents: buildContents(diag, nuovaRisposta, imgDataUrl),
@@ -3903,11 +3903,13 @@ const CocoAI = (function(){
     };
     let res;
     try{
-      res=await fetch(url,{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+      res=await fetch(url,{ method:'POST', headers:{'Content-Type':'application/json','x-goog-api-key':key}, body:JSON.stringify(body) });
     }catch(e){ throw new Error('Errore di connessione a Gemini: '+(e.message||e)); }
     if(!res.ok){
       let det=''; try{ det=(await res.text()).slice(0,300); }catch(e){}
-      if(res.status===400 && /API key/i.test(det)) throw new Error('Chiave Gemini non valida (HTTP 400).');
+      if(res.status===400 && /API key/i.test(det)) throw new Error('Chiave Gemini non valida (HTTP 400). Controlla la chiave nelle Impostazioni AI.');
+      if(res.status===401||res.status===403) throw new Error('Chiave Gemini non valida o non autorizzata (HTTP '+res.status+').\n\nVerifica nelle Impostazioni AI:\n• la chiave è completa e senza spazi\n• è una chiave di Google AI Studio (aistudio.google.com/apikey)\n• la chiave non ha restrizioni che bloccano questo sito');
+      if(res.status===404) throw new Error('Modello non trovato (HTTP 404). Nelle Impostazioni AI scegli un modello attuale (es. gemini-2.5-flash).');
       throw new Error('Gemini ha risposto con errore HTTP '+res.status+(det?(': '+det):''));
     }
     const data=await res.json();
@@ -4044,7 +4046,7 @@ function tbsImpostazioniAI(){
       style="width:100%;box-sizing:border-box;padding:13px;border:1px solid var(--border,#2a2f42);border-radius:12px;background:var(--surface2,#1c2030);color:inherit;font-size:15px;font-family:inherit;margin-bottom:12px">
     <div style="font-size:12px;font-weight:600;margin-bottom:5px">🧠 Modello</div>
     <select id="tbs-model" style="width:100%;box-sizing:border-box;padding:13px;border:1px solid var(--border,#2a2f42);border-radius:12px;background:var(--surface2,#1c2030);color:inherit;font-size:15px;font-family:inherit;margin-bottom:14px">
-      ${opt('gemini-2.0-flash')}${opt('gemini-2.5-flash')}${opt('gemini-1.5-flash')}${opt('gemini-1.5-pro')}
+      ${opt('gemini-2.5-flash')}${opt('gemini-2.5-pro')}${opt('gemini-2.5-flash-lite')}${opt('gemini-2.0-flash')}
     </select>
     <button onclick="tbsSalvaApiKey()" style="width:100%;padding:14px;border:none;border-radius:12px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;font-family:inherit;margin-bottom:8px">💾 Salva</button>
     <div style="display:flex;gap:8px">
