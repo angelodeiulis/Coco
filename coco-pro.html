@@ -1255,7 +1255,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='96';
+const APP_VERSION='97';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -3751,7 +3751,7 @@ const CocoStore = (function(){
   }
 
   // ── Chiave & modello AI (Requisito 1) ──
-  function _clean(k){ return (k||'').replace(/[^A-Za-z0-9_\-]/g,''); }   // toglie spazi/caratteri invisibili da copia-incolla
+  function _clean(k){ return (k||'').replace(/\s+/g,'').replace(/[^A-Za-z0-9_.\-]/g,''); }   // toglie spazi/caratteri invisibili, MANTIENE il punto (chiavi AQ.Ab...)
   function getApiKey(){ try{ return _clean(localStorage.getItem(AIKEY_LS)||''); }catch(e){ return ''; } }
   function setApiKey(k){ try{ localStorage.setItem(AIKEY_LS,_clean(k)); return true; }catch(e){ return false; } }
   function delApiKey(){ try{ localStorage.removeItem(AIKEY_LS); return true; }catch(e){ return false; } }
