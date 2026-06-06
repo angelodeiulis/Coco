@@ -1255,7 +1255,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='97';
+const APP_VERSION='98';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -3821,7 +3821,7 @@ const CocoAI = (function(){
 
   // — Requisito 6 — Memoria: ricostruisce TUTTA la cronologia come contents Gemini
   // (alterna user/model). Le immagini vengono allegate al turno utente corretto.
-  function buildContents(diag, nuovaRisposta, imgDataUrl){
+  function buildContents(diag, nuovaRisposta, imgDataUrl, pdfData){
     const contents = [];
     // 1) primo turno utente = contesto + problema iniziale
     contents.push({ role:'user', parts:[{ text:
@@ -3846,6 +3846,15 @@ const CocoAI = (function(){
       contents.push({ role:'user', parts });
     } else if(imgDataUrl){
       contents.push({ role:'user', parts:[{ text:'Allego una foto come supporto diagnostico.' }, _imgPart(imgDataUrl)] });
+    }
+
+    // 4) manuale PDF SOLO per questa richiesta (non salvato): lo allego all'ultimo turno utente
+    if(pdfData && pdfData.b64){
+      let lastUser=null;
+      for(let i=contents.length-1;i>=0;i--){ if(contents[i].role==='user'){ lastUser=contents[i]; break; } }
+      if(!lastUser){ lastUser={ role:'user', parts:[] }; contents.push(lastUser); }
+      lastUser.parts.push({ text:'Allego il manuale tecnico di riferimento "'+(pdfData.name||'manuale.pdf')+'". Usalo come fonte per la diagnosi.' });
+      lastUser.parts.push({ inline_data:{ mime_type:'application/pdf', data:pdfData.b64 } });
     }
     return contents;
   }
@@ -3892,14 +3901,14 @@ const CocoAI = (function(){
   }
 
   // — Requisiti 1/5/7 — Chiamata a Gemini. Ritorna l'oggetto JSON validato.
-  async function ask(diag, nuovaRisposta, imgDataUrl){
+  async function ask(diag, nuovaRisposta, imgDataUrl, pdfData){
     const key=CocoStore.getApiKey();
     if(!key){ const err=new Error('Configurare prima la chiave Gemini nelle Impostazioni AI'); err.code='NO_KEY'; throw err; }
     const model=CocoStore.getModel();
     const url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent?key='+encodeURIComponent(key);
     const body={
       system_instruction:{ parts:[{ text: systemPrompt() }] },
-      contents: buildContents(diag, nuovaRisposta, imgDataUrl),
+      contents: buildContents(diag, nuovaRisposta, imgDataUrl, pdfData),
       generationConfig:{ response_mime_type:'application/json', temperature:0.4, maxOutputTokens:1024 }
     };
     let res;
@@ -4151,6 +4160,7 @@ function tbsAvviaDiagnosi(cid){
 
 /* ── Schermata sessione diagnostica fullscreen (touch) — Requisito 4 ── */
 let _tbsPendingImg = null;   // immagine in attesa di essere allegata alla prossima risposta
+let _tbsPendingPdf = null;   // manuale PDF in attesa: {name,b64} — SOLO per la richiesta corrente, non salvato
 
 function tbsSessione(diagId){
   const old=document.getElementById('tbs-screen'); if(old) old.remove();
@@ -4238,7 +4248,14 @@ function tbsRenderSessione(diagId, loading, errore){
           <input type="file" accept="image/*" capture="environment" onchange="tbsAllegaFoto('${d.id}',this)" style="display:none"></label>
         <label style="flex:1;text-align:center;padding:13px;border:1px dashed var(--border,#2a2f42);border-radius:12px;color:var(--accent,#4f9cf9);font-size:14px;cursor:pointer">🖼 Galleria
           <input type="file" accept="image/*" onchange="tbsAllegaFoto('${d.id}',this)" style="display:none"></label>
-      </div></div>`;
+      </div>
+      ${_tbsPendingPdf?`<div style="display:flex;align-items:center;gap:10px;background:var(--surface,#141720);border:1px solid var(--border,#2a2f42);border-radius:12px;padding:8px;margin-top:8px">
+        <span style="font-size:24px">📄</span>
+        <div style="flex:1;min-width:0;font-size:13px;color:var(--text3,#b0b8cc)"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(_tbsPendingPdf.name)}</div>Manuale pronto: inviato con la prossima domanda (non salvato).</div>
+        <button onclick="tbsRimuoviPdf('${d.id}')" style="border:none;background:transparent;color:#ef4444;font-size:18px">🗑</button></div>`:`
+      <label style="display:block;text-align:center;padding:13px;border:1px dashed var(--border,#2a2f42);border-radius:12px;color:var(--accent,#4f9cf9);font-size:14px;cursor:pointer;margin-top:8px">📄 Allega manuale (PDF)
+        <input type="file" accept="application/pdf,.pdf" onchange="tbsAllegaPdf('${d.id}',this)" style="display:none"></label>`}
+      </div>`;
   }
 
   // galleria immagini già salvate nella diagnosi
@@ -4251,7 +4268,7 @@ function tbsRenderSessione(diagId, loading, errore){
   ov.scrollTop=ov.scrollHeight;
 }
 
-function tbsChiudiSessione(){ const ov=document.getElementById('tbs-screen'); if(ov) ov.remove(); _tbsPendingImg=null; if(typeof renderAll==='function')renderAll(); }
+function tbsChiudiSessione(){ const ov=document.getElementById('tbs-screen'); if(ov) ov.remove(); _tbsPendingImg=null; _tbsPendingPdf=null; if(typeof renderAll==='function')renderAll(); }
 
 // invia una scelta tra i bottoni
 function tbsRispondi(diagId, idx){
@@ -4263,8 +4280,8 @@ function tbsRispondi(diagId, idx){
 // invia una risposta libera
 function tbsRispondiLibero(diagId){
   const i=document.getElementById('tbs-free'); const testo=(i&&i.value||'').trim();
-  if(!testo && !_tbsPendingImg){ alert('Scrivi una risposta o allega una foto.'); return; }
-  _tbsInviaRisposta(diagId, testo||'(vedi foto allegata)');
+  if(!testo && !_tbsPendingImg && !_tbsPendingPdf){ alert('Scrivi una risposta o allega una foto/manuale.'); return; }
+  _tbsInviaRisposta(diagId, testo||'(vedi allegato)');
 }
 function _tbsInviaRisposta(diagId, testo){
   const d=CocoStore.get(diagId); if(!d) return;
@@ -4277,12 +4294,16 @@ function _tbsInviaRisposta(diagId, testo){
 // chiama l'AI per il prossimo passo (gestisce validazione/errore/retry)
 async function tbsChiediProssima(diagId, rispostaTesto, imgDataUrl){
   const d=CocoStore.get(diagId); if(!d) return;
-  // se sto inviando una risposta, l'ho già messa in cronologia: non ripassarla
+  // se sto inviando una risposta, l'ho già messa in cronologia: non ripassarla.
+  // Il PDF invece NON è in cronologia (non salvato): lo passo qui, solo per questa richiesta.
+  const pdf=_tbsPendingPdf;
   try{
-    const obj=await CocoAI.ask(d, null, null);
+    const obj=await CocoAI.ask(d, null, null, pdf);
+    _tbsPendingPdf=null;                            // manuale usato e scartato (non salvato)
     CocoDiag.pushAI(d, obj);
     tbsRenderSessione(diagId, false);
   }catch(e){
+    // in caso di errore tengo il PDF in attesa, così "Riprova" lo reinvia
     if(e.code==='NO_KEY'){ tbsRenderSessione(diagId,false,'Configurare prima la chiave Gemini nelle Impostazioni AI'); return; }
     CocoDiag.pushErrore(d, e.message);            // Requisito 5 — log
     tbsRenderSessione(diagId, false, e.message);
@@ -4299,6 +4320,25 @@ function tbsAllegaFoto(diagId, input){
   input.value='';
 }
 function tbsRimuoviFoto(diagId){ _tbsPendingImg=null; tbsRenderSessione(diagId,false,_tbsLastErr(diagId)); }
+
+// Allega un manuale PDF SOLO per la richiesta corrente (non salvato). Limite ~14 MB (Gemini ~20 MB per richiesta).
+function tbsAllegaPdf(diagId, input){
+  const file=input.files&&input.files[0]; input.value='';
+  if(!file) return;
+  const MAX=14*1024*1024;
+  if(file.type && file.type.indexOf('pdf')<0){ alert('Allega un file PDF.'); return; }
+  if(file.size>MAX){ alert('Il manuale è troppo grande ('+(file.size/1048576).toFixed(1)+' MB).\nLimite ~14 MB. Allega solo le pagine che servono o una versione ridotta.'); return; }
+  const r=new FileReader();
+  r.onload=e=>{
+    const m=/^data:[^;]*;base64,(.*)$/.exec(e.target.result||'');
+    if(!m){ alert('Impossibile leggere il PDF.'); return; }
+    _tbsPendingPdf={ name:file.name||'manuale.pdf', b64:m[1] };
+    tbsRenderSessione(diagId,false,_tbsLastErr(diagId));
+  };
+  r.onerror=()=>alert('Errore nella lettura del PDF.');
+  r.readAsDataURL(file);
+}
+function tbsRimuoviPdf(diagId){ _tbsPendingPdf=null; tbsRenderSessione(diagId,false,_tbsLastErr(diagId)); }
 function _tbsLastErr(diagId){ const d=CocoStore.get(diagId); if(d&&!CocoDiag.ultimoAI(d)&&(d.logErrori||[]).length){ return d.logErrori[d.logErrori.length-1].msg; } return null; }
 
 // — Requisiti 8 & 9 — conclude la diagnosi
