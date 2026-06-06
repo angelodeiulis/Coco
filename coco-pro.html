@@ -1255,7 +1255,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='92';
+const APP_VERSION='93';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -3711,6 +3711,675 @@ function cf_goToday(){
   }
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   TROUBLESHOOTING MODE — Diagnosi guidata AI per commessa (Co.Co. PRO)
+   --------------------------------------------------------------------
+   Modulo AGGIUNTIVO e ISOLATO. Non modifica nessuna funzione esistente.
+   È organizzato in 3 sotto-moduli indipendenti (Requisito 11 — cloud-ready):
+     • CocoStore  → tutta la PERSISTENZA (oggi localStorage, domani Supabase/Firebase)
+     • CocoAI     → tutta la logica AI (Gemini): chiave, prompt, chiamata, validazione JSON
+     • CocoDiag   → tutta la logica DIAGNOSI: creazione record, cronologia, conclusione
+   Le funzioni "tbs*" e "diag*" sono solo lo STRATO UI (touch friendly da cantiere).
+   Per migrare al cloud in futuro basterà riscrivere CocoStore (e l'endpoint di CocoAI),
+   senza toccare né la UI né la logica diagnostica.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ──────────────────────────────────────────────────────────────────
+   MODULO 1 · CocoStore — Persistenza isolata
+   Unico punto di accesso allo storage delle diagnosi e della chiave AI.
+   Oggi usa state.diagnosi + save() (localStorage). Domani: cambiare solo qui.
+   ────────────────────────────────────────────────────────────────── */
+const CocoStore = (function(){
+  const AIKEY_LS  = 'coco_gemini_key';    // chiave API Gemini (mai nel sorgente!)
+  const MODEL_LS  = 'coco_gemini_model';   // modello Gemini scelto
+  const DEFAULT_MODEL = 'gemini-2.0-flash';
+
+  // ── Diagnosi (CRUD) ──
+  function _arr(){ state.diagnosi = state.diagnosi || []; return state.diagnosi; }
+  function all(){ return _arr().slice().sort((a,b)=>(b.creato||0)-(a.creato||0)); }
+  function byCommessa(cid){ return all().filter(d=>d.commessaId===cid); }
+  function get(id){ return _arr().find(d=>d.id===id) || null; }
+  function upsert(diag){
+    const a=_arr(); const i=a.findIndex(d=>d.id===diag.id);
+    if(i>=0) a[i]=diag; else a.push(diag);
+    if(typeof save==='function') save();
+    return diag;
+  }
+  function remove(id){
+    state.diagnosi = _arr().filter(d=>d.id!==id);
+    if(typeof save==='function') save();
+  }
+
+  // ── Chiave & modello AI (Requisito 1) ──
+  function getApiKey(){ try{ return (localStorage.getItem(AIKEY_LS)||'').trim(); }catch(e){ return ''; } }
+  function setApiKey(k){ try{ localStorage.setItem(AIKEY_LS,(k||'').trim()); return true; }catch(e){ return false; } }
+  function delApiKey(){ try{ localStorage.removeItem(AIKEY_LS); return true; }catch(e){ return false; } }
+  function getModel(){ try{ return localStorage.getItem(MODEL_LS)||DEFAULT_MODEL; }catch(e){ return DEFAULT_MODEL; } }
+  function setModel(m){ try{ localStorage.setItem(MODEL_LS, m||DEFAULT_MODEL); }catch(e){} }
+
+  return { all, byCommessa, get, upsert, remove,
+           getApiKey, setApiKey, delApiKey, getModel, setModel, DEFAULT_MODEL };
+})();
+
+/* ──────────────────────────────────────────────────────────────────
+   MODULO 2 · CocoAI — Logica AI (Google Gemini)
+   Costruisce il system prompt, impacchetta la cronologia (memoria),
+   chiama l'endpoint Gemini forzando una RISPOSTA JSON, e VALIDA il JSON.
+   ────────────────────────────────────────────────────────────────── */
+const CocoAI = (function(){
+
+  // — Requisito 10 — System prompt professionale (l'AI risponde SOLO in JSON)
+  function systemPrompt(){
+    return [
+      'Sei un "Assistente tecnico di cantiere specializzato in troubleshooting operativo".',
+      'Affianchi elettricisti e capisquadra durante diagnosi, manutenzioni e risoluzione guasti',
+      '(impianti elettrici, quadri, UPS/alimentatori, antincendio, automazioni, cablaggio).',
+      '',
+      'OBIETTIVI:',
+      '- Fai UNA SOLA domanda alla volta, semplice e operativa.',
+      '- Guida il tecnico passo-passo proponendo verifiche pratiche e misure concrete.',
+      '- Evita risposte generiche: ragiona sui sintomi e sul contesto della commessa.',
+      '- Quando hai elementi sufficienti, fornisci una conclusione motivata e azioni consigliate.',
+      '- Tieni conto della sicurezza (rischio elettrico) indicando il livello di rischio.',
+      '',
+      'REGOLE DI OUTPUT (TASSATIVE):',
+      '- Rispondi SEMPRE ed ESCLUSIVAMENTE con un oggetto JSON valido. Mai testo libero, mai markdown.',
+      '- Usa SEMPRE questo schema esatto:',
+      '{',
+      '  "tipo": "domanda" oppure "conclusione",',
+      '  "titolo": "titolo breve del passo o della diagnosi",',
+      '  "testo_domanda": "la domanda da fare (se tipo=domanda) oppure la conclusione tecnica (se tipo=conclusione)",',
+      '  "bottoni_scelta": ["Scelta 1","Scelta 2","Scelta 3","Scelta 4"],',
+      '  "livello_rischio": "basso" | "medio" | "alto",',
+      '  "prossima_azione": "azione pratica suggerita",',
+      '  "note_tecniche": "eventuali note, codici errore, riferimenti"',
+      '}',
+      '- Se tipo="domanda": fornisci da 2 a 4 voci in "bottoni_scelta" (risposte mutuamente esclusive, brevi).',
+      '- Se tipo="conclusione": metti la diagnosi finale in "testo_domanda", le azioni in "prossima_azione"',
+      '  e "bottoni_scelta" puo\' essere vuoto [].',
+      '- Se ricevi una foto, leggi display, codici errore e componenti e usala come supporto diagnostico.',
+      '- Non aggiungere campi extra. Non racchiudere il JSON tra backtick.'
+    ].join('\n');
+  }
+
+  // Contesto della commessa (aiuta l'AI a essere specifico, non generico)
+  function _contestoCommessa(diag){
+    const c = (typeof getCommessa==='function' && diag.commessaId) ? getCommessa(diag.commessaId) : null;
+    const righe = ['CONTESTO COMMESSA:'];
+    if(c){
+      righe.push('- Commessa: '+(c.nome||'—')+' | Cliente: '+(c.cliente||'n/d'));
+      const fasi=(c.fasi||[]).map(f=>f.nome).filter(Boolean);
+      if(fasi.length) righe.push('- Fasi: '+fasi.join(', '));
+    } else {
+      righe.push('- (nessuna commessa collegata)');
+    }
+    righe.push('- Operatore: '+(diag.operatore||'—'));
+    righe.push('- Titolo diagnosi: '+(diag.titolo||'—'));
+    return righe.join('\n');
+  }
+
+  // — Requisito 6 — Memoria: ricostruisce TUTTA la cronologia come contents Gemini
+  // (alterna user/model). Le immagini vengono allegate al turno utente corretto.
+  function buildContents(diag, nuovaRisposta, imgDataUrl){
+    const contents = [];
+    // 1) primo turno utente = contesto + problema iniziale
+    contents.push({ role:'user', parts:[{ text:
+      _contestoCommessa(diag) + '\n\nPROBLEMA INIZIALE:\n' + (diag.problemaIniziale||diag.titolo||'—') +
+      '\n\nInizia la diagnosi: fai la prima domanda seguendo lo schema JSON.' }]});
+
+    // 2) replay della cronologia
+    (diag.cronologia||[]).forEach(turn=>{
+      if(turn.t==='ai' && turn.json){
+        contents.push({ role:'model', parts:[{ text: JSON.stringify(turn.json) }] });
+      } else if(turn.t==='risposta'){
+        const parts=[{ text:'Risposta del tecnico: '+(turn.testo||'') }];
+        if(turn.img) parts.push(_imgPart(turn.img));
+        contents.push({ role:'user', parts });
+      }
+    });
+
+    // 3) nuova risposta in attesa (se presente)
+    if(nuovaRisposta!=null){
+      const parts=[{ text:'Risposta del tecnico: '+nuovaRisposta }];
+      if(imgDataUrl) parts.push(_imgPart(imgDataUrl));
+      contents.push({ role:'user', parts });
+    } else if(imgDataUrl){
+      contents.push({ role:'user', parts:[{ text:'Allego una foto come supporto diagnostico.' }, _imgPart(imgDataUrl)] });
+    }
+    return contents;
+  }
+
+  // converte un dataURL (data:image/jpeg;base64,xxx) nel formato inlineData di Gemini
+  function _imgPart(dataUrl){
+    const m=/^data:([^;]+);base64,(.*)$/.exec(dataUrl||'');
+    return { inline_data:{ mime_type:(m?m[1]:'image/jpeg'), data:(m?m[2]:'') } };
+  }
+
+  function hasKey(){ return !!CocoStore.getApiKey(); }
+
+  // — Requisito 5 — Valida e normalizza il JSON ricevuto dall'AI
+  function parseAndValidate(rawText){
+    let txt=(rawText||'').trim();
+    // difensivo: rimuove eventuali recinti ```json ... ```
+    txt = txt.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
+    let obj;
+    try{ obj=JSON.parse(txt); }
+    catch(e){ throw new Error('JSON non valido: '+e.message+'\n\nRisposta ricevuta:\n'+txt.slice(0,400)); }
+    if(!obj || typeof obj!=='object') throw new Error('JSON non valido: risposta vuota.');
+
+    // normalizza il "tipo"
+    let tipo=String(obj.tipo||'').toLowerCase();
+    if(/concl|soluz|fine|esito|risultat/.test(tipo)) tipo='conclusione';
+    else tipo='domanda';
+    obj.tipo=tipo;
+
+    obj.titolo         = (obj.titolo||'').toString();
+    obj.testo_domanda  = (obj.testo_domanda||obj.testo||obj.domanda||'').toString();
+    obj.prossima_azione= (obj.prossima_azione||'').toString();
+    obj.note_tecniche  = (obj.note_tecniche||'').toString();
+    let r=String(obj.livello_rischio||'medio').toLowerCase();
+    obj.livello_rischio = (r==='basso'||r==='medio'||r==='alto') ? r : 'medio';
+
+    if(!Array.isArray(obj.bottoni_scelta)) obj.bottoni_scelta=[];
+    obj.bottoni_scelta = obj.bottoni_scelta.map(x=>String(x)).filter(Boolean).slice(0,4);
+
+    // controlli minimi obbligatori
+    if(!obj.testo_domanda) throw new Error('JSON incompleto: manca "testo_domanda".');
+    if(obj.tipo==='domanda' && obj.bottoni_scelta.length<2)
+      throw new Error('JSON incompleto: una "domanda" richiede almeno 2 bottoni_scelta.');
+    return obj;
+  }
+
+  // — Requisiti 1/5/7 — Chiamata a Gemini. Ritorna l'oggetto JSON validato.
+  async function ask(diag, nuovaRisposta, imgDataUrl){
+    const key=CocoStore.getApiKey();
+    if(!key){ const err=new Error('Configurare prima la chiave Gemini nelle Impostazioni AI'); err.code='NO_KEY'; throw err; }
+    const model=CocoStore.getModel();
+    const url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent?key='+encodeURIComponent(key);
+    const body={
+      system_instruction:{ parts:[{ text: systemPrompt() }] },
+      contents: buildContents(diag, nuovaRisposta, imgDataUrl),
+      generationConfig:{ response_mime_type:'application/json', temperature:0.4, maxOutputTokens:1024 }
+    };
+    let res;
+    try{
+      res=await fetch(url,{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+    }catch(e){ throw new Error('Errore di connessione a Gemini: '+(e.message||e)); }
+    if(!res.ok){
+      let det=''; try{ det=(await res.text()).slice(0,300); }catch(e){}
+      if(res.status===400 && /API key/i.test(det)) throw new Error('Chiave Gemini non valida (HTTP 400).');
+      throw new Error('Gemini ha risposto con errore HTTP '+res.status+(det?(': '+det):''));
+    }
+    const data=await res.json();
+    const cand=(data.candidates||[])[0]||{};
+    const txt=((cand.content||{}).parts||[]).map(p=>p.text||'').join('').trim();
+    if(!txt) throw new Error('Gemini non ha restituito testo (possibile blocco di sicurezza).');
+    return parseAndValidate(txt);
+  }
+
+  return { systemPrompt, buildContents, parseAndValidate, ask, hasKey };
+})();
+
+/* ──────────────────────────────────────────────────────────────────
+   MODULO 3 · CocoDiag — Logica diagnosi (record, cronologia, conclusione)
+   Non tocca lo storage direttamente: usa solo CocoStore.
+   ────────────────────────────────────────────────────────────────── */
+const CocoDiag = (function(){
+
+  function _now(){ const d=new Date(); return { data:(typeof fmt==='function'?fmt(d):d.toISOString().slice(0,10)),
+    ora:String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0') }; }
+
+  // — Requisito 2 — Ogni diagnosi appartiene a una commessa specifica
+  function create(commessaId, titolo, problemaIniziale){
+    const t=(typeof currentTec==='function')?currentTec():null;
+    const n=_now();
+    const diag={
+      id:'dg'+Date.now(),
+      commessaId: commessaId||null,
+      data:n.data, ora:n.ora, creato:Date.now(),
+      operatore:(t&&t.nome)||'—', operatoreId:(t&&t.id)||null,
+      titolo:(titolo||'Diagnosi').trim(),
+      stato:'in_corso',                 // in_corso | conclusa
+      problemaIniziale:(problemaIniziale||'').trim(),
+      cronologia:[],                    // [{t:'ai'|'risposta', ...}] — Requisito 6
+      immagini:[],                      // dataURL salvate (Requisito 7)
+      logErrori:[],                     // log JSON non validi (Requisito 5)
+      conclusione:'', azioni:'', rischio:''
+    };
+    return CocoStore.upsert(diag);
+  }
+
+  // aggiunge il turno AI alla cronologia (la domanda/conclusione in JSON)
+  function pushAI(diag, jsonObj){
+    diag.cronologia.push({ t:'ai', json:jsonObj, ts:Date.now() });
+    return CocoStore.upsert(diag);
+  }
+  // aggiunge la risposta del tecnico (con eventuale immagine) — Requisito 6
+  function pushRisposta(diag, testo, imgDataUrl){
+    const turn={ t:'risposta', testo:testo||'', ts:Date.now() };
+    if(imgDataUrl){ turn.img=imgDataUrl; diag.immagini.push({ id:'im'+Date.now(), img:imgDataUrl, ts:Date.now() }); }
+    diag.cronologia.push(turn);
+    return CocoStore.upsert(diag);
+  }
+  function pushErrore(diag, messaggio){
+    diag.logErrori.push({ ts:Date.now(), msg:String(messaggio||'') });
+    return CocoStore.upsert(diag);
+  }
+
+  // — Requisiti 8 & 9 — Conclusione: salva esito, crea EVENTO in commessa e MEMORIA OPERATIVA
+  function conclude(diag, jsonObj){
+    const n=_now();
+    diag.stato='conclusa';
+    diag.conclusione = jsonObj.testo_domanda||'';
+    diag.azioni      = jsonObj.prossima_azione||'';
+    diag.rischio     = jsonObj.livello_rischio||'medio';
+    diag.note        = jsonObj.note_tecniche||'';
+    diag.chiusoIl    = Date.now();
+    CocoStore.upsert(diag);
+
+    // Requisito 8 — evento automatico nella cronologia della commessa (agenda)
+    try{
+      const prio = diag.rischio==='alto' ? 'urgente' : (diag.rischio==='basso' ? 'info' : 'attenzione');
+      const note = 'Conclusione: '+(diag.conclusione||'—') + (diag.azioni?('\nAzioni: '+diag.azioni):'');
+      state.eventi = state.eventi || [];
+      state.eventi.push({
+        id:'ev'+Date.now(), titolo:'🔧 Diagnosi: '+(diag.titolo||'—'),
+        tipo:'sopralluogo', prio, data:n.data, ora:n.ora,
+        commessaId:diag.commessaId||null, note, done:false, diagId:diag.id
+      });
+    }catch(e){}
+
+    // Requisito 9 — memoria operativa richiamabile in futuro
+    try{
+      state.promemoria = state.promemoria || [];
+      const testo='[Diagnosi] '+(diag.titolo||'—')+' — '+(diag.conclusione||'') + (diag.azioni?(' · Azioni: '+diag.azioni):'');
+      state.promemoria.push({ id:'pm'+Date.now(), testo, tipo:'dafare',
+        commessaId:diag.commessaId||null, scadenza:'', fatto:false, creato:Date.now(), origine:'diagnosi', diagId:diag.id });
+    }catch(e){}
+
+    if(typeof save==='function') save();
+    if(typeof renderAll==='function') renderAll();
+    return diag;
+  }
+
+  function reopen(diag){ diag.stato='in_corso'; return CocoStore.upsert(diag); }
+
+  // ultimo turno AI (domanda/conclusione corrente)
+  function ultimoAI(diag){
+    for(let i=diag.cronologia.length-1;i>=0;i--){ if(diag.cronologia[i].t==='ai') return diag.cronologia[i].json; }
+    return null;
+  }
+
+  return { create, pushAI, pushRisposta, pushErrore, conclude, reopen, ultimoAI };
+})();
+
+
+/* ════════════════════════════════════════════════════════════════════
+   STRATO UI · Troubleshooting Mode (touch friendly — Requisito 4)
+   Usa gli overlay esistenti (_bfOv) e schermate fullscreen come gpsLauncher.
+   ════════════════════════════════════════════════════════════════════ */
+
+// stile pulsanti grandi riusabile (NO dropdown, NO campi piccoli)
+const TBS_BTN = 'width:100%;padding:18px 16px;border:1px solid var(--border,#2a2f42);border-radius:14px;background:var(--surface2,#1c2030);color:var(--text,#fff);font-size:17px;font-weight:600;font-family:inherit;text-align:left;cursor:pointer;margin-bottom:10px';
+
+function _tbsRischioColor(r){ return r==='alto'?'#ef4444':(r==='basso'?'#22c55e':'#eab308'); }
+function _tbsRischioLbl(r){ return r==='alto'?'🔴 Rischio alto':(r==='basso'?'🟢 Rischio basso':'🟡 Rischio medio'); }
+
+/* ── Requisito 1 — IMPOSTAZIONI AI (chiave Gemini: salva/modifica/elimina) ── */
+function tbsImpostazioniAI(){
+  if(typeof closeHdrMenu==='function') closeHdrMenu();
+  if(typeof CocoStore==='undefined' || typeof CocoAI==='undefined'){ try{ alert('Moduli AI non caricati. Ricarica la pagina forzando l\'aggiornamento (svuota la cache del sito).'); }catch(e){} return; }
+  try{
+  const has = CocoAI.hasKey();
+  const masked = has ? '••••••••••••' + (CocoStore.getApiKey().slice(-4)) : '';
+  const model = CocoStore.getModel();
+  const opt = m => '<option value="'+m+'"'+(m===model?' selected':'')+'>'+m+'</option>';
+  const inner = `
+    <div style="font-size:13px;color:var(--text3,#b0b8cc);margin-bottom:12px;line-height:1.5">
+      Inserisci la tua <b>chiave API Google Gemini</b>. Viene salvata <b>solo su questo dispositivo</b>
+      (localStorage) e non è mai presente nel codice dell'app.
+    </div>
+    <div style="font-size:12px;font-weight:600;margin-bottom:5px">🔑 API Key Gemini ${has?'<span style="color:#22c55e">(configurata)</span>':'<span style="color:#ef4444">(mancante)</span>'}</div>
+    <input id="tbs-apikey" type="password" autocomplete="off" placeholder="${has?masked:'Incolla qui la chiave…'}"
+      style="width:100%;box-sizing:border-box;padding:13px;border:1px solid var(--border,#2a2f42);border-radius:12px;background:var(--surface2,#1c2030);color:inherit;font-size:15px;font-family:inherit;margin-bottom:12px">
+    <div style="font-size:12px;font-weight:600;margin-bottom:5px">🧠 Modello</div>
+    <select id="tbs-model" style="width:100%;box-sizing:border-box;padding:13px;border:1px solid var(--border,#2a2f42);border-radius:12px;background:var(--surface2,#1c2030);color:inherit;font-size:15px;font-family:inherit;margin-bottom:14px">
+      ${opt('gemini-2.0-flash')}${opt('gemini-2.5-flash')}${opt('gemini-1.5-flash')}${opt('gemini-1.5-pro')}
+    </select>
+    <button onclick="tbsSalvaApiKey()" style="width:100%;padding:14px;border:none;border-radius:12px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;font-family:inherit;margin-bottom:8px">💾 Salva</button>
+    <div style="display:flex;gap:8px">
+      <button onclick="tbsModificaApiKey()" style="flex:1;padding:12px;border:1px solid var(--border,#2a2f42);border-radius:12px;background:transparent;color:var(--text,#fff);font-size:14px;font-family:inherit">✎ Modifica</button>
+      <button onclick="tbsEliminaApiKey()" ${has?'':'disabled'} style="flex:1;padding:12px;border:none;border-radius:12px;background:transparent;color:${has?'#ef4444':'var(--text3,#666)'};font-size:14px;font-family:inherit">🗑 Elimina</button>
+    </div>`;
+  document.body.appendChild(_bfOv('tbs-ai-ov','⚙️ Impostazioni AI', inner));
+  }catch(e){ try{ alert('Errore Impostazioni AI: '+(e&&e.message||e)); }catch(_){} }
+}
+function tbsSalvaApiKey(){            // saveApiKey()
+  const v=(document.getElementById('tbs-apikey').value||'').trim();
+  CocoStore.setModel(document.getElementById('tbs-model').value);
+  if(v && !/^•+/.test(v)){ CocoStore.setApiKey(v); }   // non sovrascrive col valore mascherato
+  const ov=document.getElementById('tbs-ai-ov'); if(ov) ov.remove();
+  alert('Impostazioni AI salvate.');
+}
+function tbsModificaApiKey(){         // edit: pulisce il campo per reinserire
+  const i=document.getElementById('tbs-apikey'); if(i){ i.value=''; i.placeholder='Inserisci la nuova chiave…'; i.focus(); }
+}
+function tbsEliminaApiKey(){          // deleteApiKey()
+  if(!CocoAI.hasKey()) return;
+  if(!confirm('Eliminare la chiave Gemini da questo dispositivo?')) return;
+  CocoStore.delApiKey();
+  const ov=document.getElementById('tbs-ai-ov'); if(ov) ov.remove();
+  tbsImpostazioniAI();
+}
+// alias richiesti esplicitamente dal Requisito 1
+function saveApiKey(k){ return CocoStore.setApiKey(k); }
+function getApiKey(){ return CocoStore.getApiKey(); }
+function deleteApiKey(){ return CocoStore.delApiKey(); }
+
+/* ── Entry point dalla commessa (Requisito 2): lista diagnosi + nuova ── */
+function tbsApriCommessa(cid){
+  if(typeof CocoStore==='undefined'){ try{ alert('Moduli AI non caricati. Ricarica la pagina forzando l\'aggiornamento.'); }catch(e){} return; }
+  try{
+  const c=(typeof getCommessa==='function')?getCommessa(cid):null;
+  const list=CocoStore.byCommessa(cid);
+  let body=`<button onclick="document.getElementById('tbs-cm-ov').remove();tbsNuovaDiagnosi('${cid}')"
+      style="width:100%;padding:14px;border:none;border-radius:12px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;font-family:inherit;margin-bottom:12px">➕ Nuova diagnosi</button>`;
+  if(!list.length){
+    body+='<div class="empty-state" style="padding:18px 10px"><div class="empty-big">🔧</div>Nessuna diagnosi per questo lavoro.</div>';
+  } else {
+    body+='<div class="card"><div class="inner-list">'+list.map(d=>_tbsRigaDiag(d,true)).join('')+'</div></div>';
+  }
+  document.body.appendChild(_bfOv('tbs-cm-ov','🔧 Troubleshooting — '+esc(c?c.nome:'Commessa'), body));
+  }catch(e){ try{ alert('Errore Troubleshooting: '+(e&&e.message||e)); }catch(_){} }
+}
+
+// riga riepilogo di una diagnosi (usata in lista commessa e nello storico)
+function _tbsRigaDiag(d, fromCommessa){
+  const c=d.commessaId&&typeof getCommessa==='function'?getCommessa(d.commessaId):null;
+  const statoTxt = d.stato==='conclusa' ? '<span style="color:#22c55e">✓ conclusa</span>' : '<span style="color:#eab308">… in corso</span>';
+  const sub = (fromCommessa?'':((c?esc(c.nome)+' · ':''))) + (_bfData?(' 📅 '+_bfData(d.data)):(' '+d.data)) + ' · 👤 '+esc(d.operatore||'—');
+  return `<div class="row-item" onclick="tbsApriDiagnosi('${d.id}')" style="align-items:flex-start">
+    <div class="ri" style="flex:1"><div class="ri-nome">${esc(d.titolo||'Diagnosi')}</div>
+    <div class="ri-meta" style="margin-top:2px">${sub} · ${statoTxt}</div></div><span style="color:var(--text3)">›</span></div>`;
+}
+
+/* ── Crea una nuova diagnosi (chiede titolo + problema) e avvia la sessione ── */
+function tbsNuovaDiagnosi(cid){
+  if(!CocoAI.hasKey()){ alert('Configurare prima la chiave Gemini nelle Impostazioni AI'); tbsImpostazioniAI(); return; }
+  const inner=`
+    <div style="font-size:12px;font-weight:600;margin-bottom:5px">Titolo diagnosi</div>
+    <input id="tbs-new-tit" placeholder="Es. UPS in blocco, quadro Fm…" style="width:100%;box-sizing:border-box;padding:13px;border:1px solid var(--border,#2a2f42);border-radius:12px;background:var(--surface2,#1c2030);color:inherit;font-size:16px;font-family:inherit;margin-bottom:12px">
+    <div style="font-size:12px;font-weight:600;margin-bottom:5px">Problema riscontrato</div>
+    <textarea id="tbs-new-prob" placeholder="Descrivi sintomo, codice errore, comportamento…" style="width:100%;box-sizing:border-box;min-height:120px;padding:13px;border:1px solid var(--border,#2a2f42);border-radius:12px;background:var(--surface2,#1c2030);color:inherit;font-size:16px;font-family:inherit;resize:vertical;margin-bottom:12px"></textarea>
+    <button onclick="tbsAvviaDiagnosi('${cid}')" style="width:100%;padding:15px;border:none;border-radius:12px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:16px;font-family:inherit">▶︎ Avvia diagnosi guidata</button>`;
+  document.body.appendChild(_bfOv('tbs-new-ov','🔧 Nuova diagnosi', inner));
+}
+function tbsAvviaDiagnosi(cid){
+  const tit=(document.getElementById('tbs-new-tit').value||'').trim();
+  const prob=(document.getElementById('tbs-new-prob').value||'').trim();
+  if(!prob){ alert('Descrivi il problema riscontrato.'); return; }
+  const ov=document.getElementById('tbs-new-ov'); if(ov) ov.remove();
+  const diag=CocoDiag.create(cid, tit||prob.slice(0,40), prob);
+  tbsSessione(diag.id);
+  tbsChiediProssima(diag.id, null, null);   // prima domanda AI
+}
+
+/* ── Schermata sessione diagnostica fullscreen (touch) — Requisito 4 ── */
+let _tbsPendingImg = null;   // immagine in attesa di essere allegata alla prossima risposta
+
+function tbsSessione(diagId){
+  const old=document.getElementById('tbs-screen'); if(old) old.remove();
+  _tbsPendingImg=null;
+  const ov=document.createElement('div'); ov.id='tbs-screen';
+  ov.style.cssText='position:fixed;inset:0;z-index:330;background:var(--bg,#0b0d12);overflow:auto;padding:14px 14px 28px;display:flex;flex-direction:column;gap:12px';
+  document.body.appendChild(ov);
+  tbsRenderSessione(diagId);
+}
+
+function tbsRenderSessione(diagId, loading, errore){
+  const ov=document.getElementById('tbs-screen'); if(!ov) return;
+  const d=CocoStore.get(diagId); if(!d){ ov.remove(); return; }
+  const corrente=CocoDiag.ultimoAI(d);
+  const c=d.commessaId&&typeof getCommessa==='function'?getCommessa(d.commessaId):null;
+
+  // header
+  let html=`<div style="display:flex;align-items:center;gap:10px">
+      <button onclick="tbsChiudiSessione()" style="width:40px;height:40px;border-radius:10px;border:1px solid var(--border,#2a2f42);background:var(--surface,#141720);color:#fff;font-size:20px">↩︎</button>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🔧 ${esc(d.titolo||'Diagnosi')}</div>
+        <div style="font-size:11px;color:var(--text3,#b0b8cc)">${c?esc(c.nome)+' · ':''}${d.operatore||'—'}${d.stato==='conclusa'?' · ✓ conclusa':''}</div>
+      </div></div>`;
+
+  // cronologia compatta dei passi precedenti (memoria visibile)
+  const passi=(d.cronologia||[]);
+  if(passi.length){
+    html+='<div style="display:flex;flex-direction:column;gap:6px">';
+    passi.forEach(t=>{
+      if(t.t==='ai' && t.json && t.json.tipo==='domanda'){
+        html+=`<div style="font-size:13px;color:var(--text3,#b0b8cc);padding:4px 2px">❓ ${esc(t.json.testo_domanda||'')}</div>`;
+      } else if(t.t==='risposta'){
+        html+=`<div style="align-self:flex-end;max-width:85%;background:var(--accent2,#2563eb);color:#fff;padding:8px 12px;border-radius:12px;font-size:14px">${esc(t.testo||'')}${t.img?' 📷':''}</div>`;
+      }
+    });
+    html+='</div>';
+  }
+
+  if(loading){
+    html+=`<div style="display:flex;align-items:center;gap:10px;color:var(--text3,#b0b8cc);padding:14px">
+      <div class="dot-pulse"><span></span><span></span><span></span></div> Analizzo…</div>`;
+  } else if(errore){
+    html+=`<div style="background:#ef444422;border:1px solid #ef4444;border-radius:12px;padding:12px;font-size:13px;color:#fca5a5;white-space:pre-wrap">⚠️ ${esc(errore)}</div>
+      <button onclick="tbsRiprova('${d.id}')" style="${TBS_BTN};background:var(--accent2,#2563eb);text-align:center;color:#fff">↻ Riprova</button>`;
+  } else if(corrente){
+    // riquadro domanda/conclusione corrente
+    const col=_tbsRischioColor(corrente.livello_rischio);
+    html+=`<div style="background:var(--surface,#141720);border:1px solid var(--border,#2a2f42);border-left:4px solid ${col};border-radius:14px;padding:16px">
+        <div style="font-size:12px;font-weight:700;color:${col};margin-bottom:6px">${corrente.tipo==='conclusione'?'✅ CONCLUSIONE':'❓ '+esc(corrente.titolo||'Domanda')} · ${_tbsRischioLbl(corrente.livello_rischio)}</div>
+        <div style="font-size:18px;font-weight:600;line-height:1.4">${esc(corrente.testo_domanda||'')}</div>
+        ${corrente.note_tecniche?`<div style="font-size:13px;color:var(--text3,#b0b8cc);margin-top:8px">🛈 ${esc(corrente.note_tecniche)}</div>`:''}
+        ${corrente.tipo==='conclusione'&&corrente.prossima_azione?`<div style="font-size:14px;margin-top:10px"><b>Azioni consigliate:</b> ${esc(corrente.prossima_azione)}</div>`:''}
+      </div>`;
+
+    if(corrente.tipo==='conclusione'){
+      if(d.stato!=='conclusa'){
+        html+=`<button onclick="tbsConcludi('${d.id}')" style="${TBS_BTN};background:#22c55e;color:#fff;text-align:center;font-weight:700">✔ Termina e salva (crea evento + memoria)</button>`;
+      } else {
+        html+=`<div style="text-align:center;color:#22c55e;font-weight:700;padding:8px">Diagnosi salvata ✓</div>`;
+      }
+    } else {
+      // — Requisito 4 — bottoni GRANDI di scelta
+      html+='<div style="margin-top:4px">';
+      (corrente.bottoni_scelta||[]).forEach((b,i)=>{
+        html+=`<button onclick="tbsRispondi('${d.id}',${i})" style="${TBS_BTN}">${esc(b)}</button>`;
+      });
+      html+='</div>';
+      // risposta libera + foto
+      html+=`<div style="display:flex;gap:8px;align-items:stretch">
+        <input id="tbs-free" placeholder="Oppure scrivi una risposta…" style="flex:1;box-sizing:border-box;padding:14px;border:1px solid var(--border,#2a2f42);border-radius:12px;background:var(--surface2,#1c2030);color:inherit;font-size:15px;font-family:inherit">
+        <button onclick="tbsRispondiLibero('${d.id}')" style="width:54px;border:none;border-radius:12px;background:var(--accent2,#2563eb);color:#fff;font-size:20px">↑</button>
+      </div>`;
+    }
+  }
+
+  // — Requisito 7 — Allega foto (fotocamera / galleria) + anteprima
+  if(d.stato!=='conclusa' && !loading){
+    html+=`<div style="margin-top:6px">
+      ${_tbsPendingImg?`<div style="display:flex;align-items:center;gap:10px;background:var(--surface,#141720);border:1px solid var(--border,#2a2f42);border-radius:12px;padding:8px;margin-bottom:8px">
+        <img src="${_tbsPendingImg}" style="width:54px;height:54px;object-fit:cover;border-radius:8px">
+        <div style="flex:1;font-size:13px;color:var(--text3,#b0b8cc)">Foto pronta: verrà inviata con la prossima risposta.</div>
+        <button onclick="tbsRimuoviFoto('${d.id}')" style="border:none;background:transparent;color:#ef4444;font-size:18px">🗑</button></div>`:''}
+      <div style="display:flex;gap:8px">
+        <label style="flex:1;text-align:center;padding:13px;border:1px dashed var(--border,#2a2f42);border-radius:12px;color:var(--accent,#4f9cf9);font-size:14px;cursor:pointer">📷 Fotocamera
+          <input type="file" accept="image/*" capture="environment" onchange="tbsAllegaFoto('${d.id}',this)" style="display:none"></label>
+        <label style="flex:1;text-align:center;padding:13px;border:1px dashed var(--border,#2a2f42);border-radius:12px;color:var(--accent,#4f9cf9);font-size:14px;cursor:pointer">🖼 Galleria
+          <input type="file" accept="image/*" onchange="tbsAllegaFoto('${d.id}',this)" style="display:none"></label>
+      </div></div>`;
+  }
+
+  // galleria immagini già salvate nella diagnosi
+  if((d.immagini||[]).length){
+    html+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:4px">'+
+      d.immagini.map(im=>`<img src="${im.img}" style="width:100%;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--border,#2a2f42)">`).join('')+'</div>';
+  }
+
+  ov.innerHTML=html;
+  ov.scrollTop=ov.scrollHeight;
+}
+
+function tbsChiudiSessione(){ const ov=document.getElementById('tbs-screen'); if(ov) ov.remove(); _tbsPendingImg=null; if(typeof renderAll==='function')renderAll(); }
+
+// invia una scelta tra i bottoni
+function tbsRispondi(diagId, idx){
+  const d=CocoStore.get(diagId); if(!d) return;
+  const cur=CocoDiag.ultimoAI(d); if(!cur) return;
+  const testo=(cur.bottoni_scelta||[])[idx]||'';
+  _tbsInviaRisposta(diagId, testo);
+}
+// invia una risposta libera
+function tbsRispondiLibero(diagId){
+  const i=document.getElementById('tbs-free'); const testo=(i&&i.value||'').trim();
+  if(!testo && !_tbsPendingImg){ alert('Scrivi una risposta o allega una foto.'); return; }
+  _tbsInviaRisposta(diagId, testo||'(vedi foto allegata)');
+}
+function _tbsInviaRisposta(diagId, testo){
+  const d=CocoStore.get(diagId); if(!d) return;
+  const img=_tbsPendingImg; _tbsPendingImg=null;
+  CocoDiag.pushRisposta(d, testo, img);          // Requisito 6 — memoria
+  tbsRenderSessione(diagId, true);               // loading
+  tbsChiediProssima(diagId, testo, img);
+}
+
+// chiama l'AI per il prossimo passo (gestisce validazione/errore/retry)
+async function tbsChiediProssima(diagId, rispostaTesto, imgDataUrl){
+  const d=CocoStore.get(diagId); if(!d) return;
+  // se sto inviando una risposta, l'ho già messa in cronologia: non ripassarla
+  try{
+    const obj=await CocoAI.ask(d, null, null);
+    CocoDiag.pushAI(d, obj);
+    tbsRenderSessione(diagId, false);
+  }catch(e){
+    if(e.code==='NO_KEY'){ tbsRenderSessione(diagId,false,'Configurare prima la chiave Gemini nelle Impostazioni AI'); return; }
+    CocoDiag.pushErrore(d, e.message);            // Requisito 5 — log
+    tbsRenderSessione(diagId, false, e.message);
+  }
+}
+function tbsRiprova(diagId){ tbsRenderSessione(diagId, true); tbsChiediProssima(diagId, null, null); }
+
+// — Requisito 7 — acquisizione foto (compressa) tenuta in attesa
+function tbsAllegaFoto(diagId, input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const done=(dataUrl)=>{ _tbsPendingImg=dataUrl; tbsRenderSessione(diagId,false, _tbsLastErr(diagId)); };
+  if(typeof compressImage==='function') compressImage(file,1280,.6,done);
+  else { const r=new FileReader(); r.onload=e=>done(e.target.result); r.readAsDataURL(file); }
+  input.value='';
+}
+function tbsRimuoviFoto(diagId){ _tbsPendingImg=null; tbsRenderSessione(diagId,false,_tbsLastErr(diagId)); }
+function _tbsLastErr(diagId){ const d=CocoStore.get(diagId); if(d&&!CocoDiag.ultimoAI(d)&&(d.logErrori||[]).length){ return d.logErrori[d.logErrori.length-1].msg; } return null; }
+
+// — Requisiti 8 & 9 — conclude la diagnosi
+function tbsConcludi(diagId){
+  const d=CocoStore.get(diagId); if(!d) return;
+  const cur=CocoDiag.ultimoAI(d); if(!cur||cur.tipo!=='conclusione') return;
+  CocoDiag.conclude(d, cur);
+  tbsRenderSessione(diagId, false);
+  alert('Diagnosi salvata.\n• Evento creato nella commessa\n• Memoria operativa aggiornata');
+}
+
+/* ── Riapertura di una diagnosi passata (Requisito 3) ── */
+function tbsApriDiagnosi(diagId){
+  ['tbs-cm-ov','tbs-storico-ov'].forEach(id=>{ const o=document.getElementById(id); if(o) o.remove(); });
+  const d=CocoStore.get(diagId); if(!d) return;
+  tbsSessione(diagId);
+  if(!CocoDiag.ultimoAI(d) && d.stato!=='conclusa'){ tbsRenderSessione(diagId,true); tbsChiediProssima(diagId,null,null); }
+}
+
+/* ── Requisito 3 — VISTA "Storico Diagnosi" (tutte le commesse) ── */
+function diagRenderStorico(){
+  // 1) trova (o ricrea) il contenitore: mai uscire in silenzio
+  let el=document.getElementById('diagnosi-inner');
+  if(!el){
+    const v=document.getElementById('view-diagnosi');
+    if(v){ el=document.createElement('div'); el.id='diagnosi-inner'; el.className='page-pad'; v.appendChild(el); }
+  }
+  if(!el){ try{ alert('Storico Diagnosi: contenitore non trovato nella pagina.'); }catch(e){} return; }
+  // 2) i moduli AI devono essere inizializzati
+  if(typeof CocoStore==='undefined' || typeof CocoAI==='undefined' || typeof CocoDiag==='undefined'){
+    el.innerHTML='<div class="empty-state"><div class="empty-big">⚠️</div>Moduli AI non caricati. Ricarica la pagina forzando l\'aggiornamento (Ctrl+F5 o svuota cache del sito).</div>';
+    return;
+  }
+  // 3) costruzione protetta: qualsiasi errore viene mostrato a schermo
+  try{
+  const list=CocoStore.all();
+  let html=`<button onclick="tbsNuovaDiag()" style="width:100%;padding:14px;border:none;border-radius:12px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;font-family:inherit;margin-bottom:8px">➕ Nuova diagnosi</button>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button onclick="tbsImpostazioniAI()" style="flex:1;padding:12px;border:1px solid var(--border,#2a2f42);border-radius:12px;background:var(--surface,#141720);color:var(--text,#fff);font-size:14px;font-family:inherit">⚙️ Impostazioni AI ${CocoAI.hasKey()?'✓':'⚠️'}</button>
+    </div>`;
+  if(!list.length){
+    html+='<div class="empty-state"><div class="empty-big">🔧</div>Nessuna diagnosi in archivio.<br>Apri una commessa e tocca 🔧 per iniziare.</div>';
+  } else {
+    // raggruppa per commessa
+    const byC={};
+    list.forEach(d=>{ const k=d.commessaId||'_'; (byC[k]=byC[k]||[]).push(d); });
+    Object.keys(byC).forEach(k=>{
+      const c=(k!=='_'&&typeof getCommessa==='function')?getCommessa(k):null;
+      html+=`<div style="font-size:12px;font-weight:700;color:var(--text3,#b0b8cc);text-transform:uppercase;letter-spacing:.06em;margin:14px 2px 6px">${c?esc(c.nome):'Senza commessa'}</div>`;
+      html+='<div class="card"><div class="inner-list">'+byC[k].map(d=>_tbsRigaDiag(d,false)).join('')+'</div></div>';
+    });
+  }
+  el.innerHTML=html;
+  }catch(e){
+    el.innerHTML='<div class="empty-state"><div class="empty-big">⚠️</div>Errore Storico Diagnosi:<br><span style="font-size:12px;color:#fca5a5">'+(typeof esc==='function'?esc(String(e&&e.message||e)):String(e&&e.message||e))+'</span></div>';
+  }
+}
+// apre direttamente la vista storico (render esplicito + cattura errori)
+function tbsStorico(){
+  try{ if(typeof closeHdrMenu==='function') closeHdrMenu(); }catch(e){}
+  try{ setView('diagnosi', document.getElementById('nav-diagnosi')||null); }catch(e){}
+  try{ diagRenderStorico(); }catch(e){ try{ alert('Errore apertura Storico Diagnosi: '+(e&&e.message||e)); }catch(_){} }
+}
+
+/* ── Nuova diagnosi dallo Storico: scegli prima la commessa (Requisito 2) ── */
+function tbsNuovaDiag(){
+  if(typeof CocoAI==='undefined' || typeof CocoStore==='undefined'){ try{ alert('Moduli AI non caricati. Ricarica la pagina forzando l\'aggiornamento.'); }catch(e){} return; }
+  try{
+  if(!CocoAI.hasKey()){
+    if(confirm('Configurare prima la chiave Gemini nelle Impostazioni AI.\n\nAprire ora le Impostazioni AI?')) tbsImpostazioniAI();
+    return;
+  }
+  const comm=(state.commesse||[]);
+  let body;
+  if(!comm.length){
+    body='<div class="empty-state" style="padding:18px 10px"><div class="empty-big">📋</div>Nessuna commessa disponibile.</div>';
+  } else {
+    body='<div style="font-size:13px;color:var(--text3,#b0b8cc);margin-bottom:10px">Scegli il lavoro a cui collegare la diagnosi:</div>'+
+      comm.map(c=>`<button onclick="document.getElementById('tbs-pick-ov').remove();tbsApriCommessa('${c.id}')" style="${TBS_BTN}">
+        <span style="display:block;font-size:16px;font-weight:700">${esc(c.nome)}</span>
+        <span style="display:block;font-size:12px;color:var(--text3,#b0b8cc)">${esc(c.cliente||'—')}</span></button>`).join('');
+  }
+  document.body.appendChild(_bfOv('tbs-pick-ov','🔧 Nuova diagnosi — scegli il lavoro', body));
+  }catch(e){ try{ alert('Errore: '+(e&&e.message||e)); }catch(_){} }
+}
+
+/* ── Entry point per la MODALITÀ CAMPO: scegli la commessa, poi le sue diagnosi ── */
+function tbsCampo(){
+  if(typeof CocoAI==='undefined'){ try{ alert('Moduli AI non caricati. Ricarica la pagina forzando l\'aggiornamento.'); }catch(e){} return; }
+  try{
+  if(!CocoAI.hasKey()){
+    if(confirm('Configurare prima la chiave Gemini nelle Impostazioni AI.\n\nAprire ora le Impostazioni AI?')) tbsImpostazioniAI();
+    return;
+  }
+  const comm=(state.commesse||[]);
+  let body;
+  if(!comm.length){
+    body='<div class="empty-state" style="padding:18px 10px"><div class="empty-big">📋</div>Nessuna commessa disponibile.</div>';
+  } else {
+    body=comm.map(c=>`<button onclick="document.getElementById('tbs-campo-ov').remove();tbsApriCommessa('${c.id}')" style="${TBS_BTN}">
+      <span style="display:block;font-size:16px;font-weight:700">${esc(c.nome)}</span>
+      <span style="display:block;font-size:12px;color:var(--text3,#b0b8cc)">${esc(c.cliente||'—')}</span></button>`).join('');
+  }
+  document.body.appendChild(_bfOv('tbs-campo-ov','🔧 Troubleshooting — scegli il lavoro', body));
+  }catch(e){ try{ alert('Errore Troubleshooting: '+(e&&e.message||e)); }catch(_){} }
+}
 load();
 if(!state.tecnici||!state.tecnici.length){ state.tecnici=JSON.parse(JSON.stringify(ROSTER_INIZIALE)); save(); }
 if(!state.materiali||!state.materiali.length){ state.materiali=JSON.parse(JSON.stringify(MATERIALI_INIZIALI)); save(); }
@@ -7012,676 +7681,6 @@ function apriStampa(inner){
     </div>
     <div style="padding:22px 16px 40px">${inner}</div>`;
   document.body.appendChild(ov);
-}
-
-/* ════════════════════════════════════════════════════════════════════
-   TROUBLESHOOTING MODE — Diagnosi guidata AI per commessa (Co.Co. PRO)
-   --------------------------------------------------------------------
-   Modulo AGGIUNTIVO e ISOLATO. Non modifica nessuna funzione esistente.
-   È organizzato in 3 sotto-moduli indipendenti (Requisito 11 — cloud-ready):
-     • CocoStore  → tutta la PERSISTENZA (oggi localStorage, domani Supabase/Firebase)
-     • CocoAI     → tutta la logica AI (Gemini): chiave, prompt, chiamata, validazione JSON
-     • CocoDiag   → tutta la logica DIAGNOSI: creazione record, cronologia, conclusione
-   Le funzioni "tbs*" e "diag*" sono solo lo STRATO UI (touch friendly da cantiere).
-   Per migrare al cloud in futuro basterà riscrivere CocoStore (e l'endpoint di CocoAI),
-   senza toccare né la UI né la logica diagnostica.
-   ════════════════════════════════════════════════════════════════════ */
-
-/* ──────────────────────────────────────────────────────────────────
-   MODULO 1 · CocoStore — Persistenza isolata
-   Unico punto di accesso allo storage delle diagnosi e della chiave AI.
-   Oggi usa state.diagnosi + save() (localStorage). Domani: cambiare solo qui.
-   ────────────────────────────────────────────────────────────────── */
-const CocoStore = (function(){
-  const AIKEY_LS  = 'coco_gemini_key';    // chiave API Gemini (mai nel sorgente!)
-  const MODEL_LS  = 'coco_gemini_model';   // modello Gemini scelto
-  const DEFAULT_MODEL = 'gemini-2.0-flash';
-
-  // ── Diagnosi (CRUD) ──
-  function _arr(){ state.diagnosi = state.diagnosi || []; return state.diagnosi; }
-  function all(){ return _arr().slice().sort((a,b)=>(b.creato||0)-(a.creato||0)); }
-  function byCommessa(cid){ return all().filter(d=>d.commessaId===cid); }
-  function get(id){ return _arr().find(d=>d.id===id) || null; }
-  function upsert(diag){
-    const a=_arr(); const i=a.findIndex(d=>d.id===diag.id);
-    if(i>=0) a[i]=diag; else a.push(diag);
-    if(typeof save==='function') save();
-    return diag;
-  }
-  function remove(id){
-    state.diagnosi = _arr().filter(d=>d.id!==id);
-    if(typeof save==='function') save();
-  }
-
-  // ── Chiave & modello AI (Requisito 1) ──
-  function getApiKey(){ try{ return (localStorage.getItem(AIKEY_LS)||'').trim(); }catch(e){ return ''; } }
-  function setApiKey(k){ try{ localStorage.setItem(AIKEY_LS,(k||'').trim()); return true; }catch(e){ return false; } }
-  function delApiKey(){ try{ localStorage.removeItem(AIKEY_LS); return true; }catch(e){ return false; } }
-  function getModel(){ try{ return localStorage.getItem(MODEL_LS)||DEFAULT_MODEL; }catch(e){ return DEFAULT_MODEL; } }
-  function setModel(m){ try{ localStorage.setItem(MODEL_LS, m||DEFAULT_MODEL); }catch(e){} }
-
-  return { all, byCommessa, get, upsert, remove,
-           getApiKey, setApiKey, delApiKey, getModel, setModel, DEFAULT_MODEL };
-})();
-
-/* ──────────────────────────────────────────────────────────────────
-   MODULO 2 · CocoAI — Logica AI (Google Gemini)
-   Costruisce il system prompt, impacchetta la cronologia (memoria),
-   chiama l'endpoint Gemini forzando una RISPOSTA JSON, e VALIDA il JSON.
-   ────────────────────────────────────────────────────────────────── */
-const CocoAI = (function(){
-
-  // — Requisito 10 — System prompt professionale (l'AI risponde SOLO in JSON)
-  function systemPrompt(){
-    return [
-      'Sei un "Assistente tecnico di cantiere specializzato in troubleshooting operativo".',
-      'Affianchi elettricisti e capisquadra durante diagnosi, manutenzioni e risoluzione guasti',
-      '(impianti elettrici, quadri, UPS/alimentatori, antincendio, automazioni, cablaggio).',
-      '',
-      'OBIETTIVI:',
-      '- Fai UNA SOLA domanda alla volta, semplice e operativa.',
-      '- Guida il tecnico passo-passo proponendo verifiche pratiche e misure concrete.',
-      '- Evita risposte generiche: ragiona sui sintomi e sul contesto della commessa.',
-      '- Quando hai elementi sufficienti, fornisci una conclusione motivata e azioni consigliate.',
-      '- Tieni conto della sicurezza (rischio elettrico) indicando il livello di rischio.',
-      '',
-      'REGOLE DI OUTPUT (TASSATIVE):',
-      '- Rispondi SEMPRE ed ESCLUSIVAMENTE con un oggetto JSON valido. Mai testo libero, mai markdown.',
-      '- Usa SEMPRE questo schema esatto:',
-      '{',
-      '  "tipo": "domanda" oppure "conclusione",',
-      '  "titolo": "titolo breve del passo o della diagnosi",',
-      '  "testo_domanda": "la domanda da fare (se tipo=domanda) oppure la conclusione tecnica (se tipo=conclusione)",',
-      '  "bottoni_scelta": ["Scelta 1","Scelta 2","Scelta 3","Scelta 4"],',
-      '  "livello_rischio": "basso" | "medio" | "alto",',
-      '  "prossima_azione": "azione pratica suggerita",',
-      '  "note_tecniche": "eventuali note, codici errore, riferimenti"',
-      '}',
-      '- Se tipo="domanda": fornisci da 2 a 4 voci in "bottoni_scelta" (risposte mutuamente esclusive, brevi).',
-      '- Se tipo="conclusione": metti la diagnosi finale in "testo_domanda", le azioni in "prossima_azione"',
-      '  e "bottoni_scelta" puo\' essere vuoto [].',
-      '- Se ricevi una foto, leggi display, codici errore e componenti e usala come supporto diagnostico.',
-      '- Non aggiungere campi extra. Non racchiudere il JSON tra backtick.'
-    ].join('\n');
-  }
-
-  // Contesto della commessa (aiuta l'AI a essere specifico, non generico)
-  function _contestoCommessa(diag){
-    const c = (typeof getCommessa==='function' && diag.commessaId) ? getCommessa(diag.commessaId) : null;
-    const righe = ['CONTESTO COMMESSA:'];
-    if(c){
-      righe.push('- Commessa: '+(c.nome||'—')+' | Cliente: '+(c.cliente||'n/d'));
-      const fasi=(c.fasi||[]).map(f=>f.nome).filter(Boolean);
-      if(fasi.length) righe.push('- Fasi: '+fasi.join(', '));
-    } else {
-      righe.push('- (nessuna commessa collegata)');
-    }
-    righe.push('- Operatore: '+(diag.operatore||'—'));
-    righe.push('- Titolo diagnosi: '+(diag.titolo||'—'));
-    return righe.join('\n');
-  }
-
-  // — Requisito 6 — Memoria: ricostruisce TUTTA la cronologia come contents Gemini
-  // (alterna user/model). Le immagini vengono allegate al turno utente corretto.
-  function buildContents(diag, nuovaRisposta, imgDataUrl){
-    const contents = [];
-    // 1) primo turno utente = contesto + problema iniziale
-    contents.push({ role:'user', parts:[{ text:
-      _contestoCommessa(diag) + '\n\nPROBLEMA INIZIALE:\n' + (diag.problemaIniziale||diag.titolo||'—') +
-      '\n\nInizia la diagnosi: fai la prima domanda seguendo lo schema JSON.' }]});
-
-    // 2) replay della cronologia
-    (diag.cronologia||[]).forEach(turn=>{
-      if(turn.t==='ai' && turn.json){
-        contents.push({ role:'model', parts:[{ text: JSON.stringify(turn.json) }] });
-      } else if(turn.t==='risposta'){
-        const parts=[{ text:'Risposta del tecnico: '+(turn.testo||'') }];
-        if(turn.img) parts.push(_imgPart(turn.img));
-        contents.push({ role:'user', parts });
-      }
-    });
-
-    // 3) nuova risposta in attesa (se presente)
-    if(nuovaRisposta!=null){
-      const parts=[{ text:'Risposta del tecnico: '+nuovaRisposta }];
-      if(imgDataUrl) parts.push(_imgPart(imgDataUrl));
-      contents.push({ role:'user', parts });
-    } else if(imgDataUrl){
-      contents.push({ role:'user', parts:[{ text:'Allego una foto come supporto diagnostico.' }, _imgPart(imgDataUrl)] });
-    }
-    return contents;
-  }
-
-  // converte un dataURL (data:image/jpeg;base64,xxx) nel formato inlineData di Gemini
-  function _imgPart(dataUrl){
-    const m=/^data:([^;]+);base64,(.*)$/.exec(dataUrl||'');
-    return { inline_data:{ mime_type:(m?m[1]:'image/jpeg'), data:(m?m[2]:'') } };
-  }
-
-  function hasKey(){ return !!CocoStore.getApiKey(); }
-
-  // — Requisito 5 — Valida e normalizza il JSON ricevuto dall'AI
-  function parseAndValidate(rawText){
-    let txt=(rawText||'').trim();
-    // difensivo: rimuove eventuali recinti ```json ... ```
-    txt = txt.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
-    let obj;
-    try{ obj=JSON.parse(txt); }
-    catch(e){ throw new Error('JSON non valido: '+e.message+'\n\nRisposta ricevuta:\n'+txt.slice(0,400)); }
-    if(!obj || typeof obj!=='object') throw new Error('JSON non valido: risposta vuota.');
-
-    // normalizza il "tipo"
-    let tipo=String(obj.tipo||'').toLowerCase();
-    if(/concl|soluz|fine|esito|risultat/.test(tipo)) tipo='conclusione';
-    else tipo='domanda';
-    obj.tipo=tipo;
-
-    obj.titolo         = (obj.titolo||'').toString();
-    obj.testo_domanda  = (obj.testo_domanda||obj.testo||obj.domanda||'').toString();
-    obj.prossima_azione= (obj.prossima_azione||'').toString();
-    obj.note_tecniche  = (obj.note_tecniche||'').toString();
-    let r=String(obj.livello_rischio||'medio').toLowerCase();
-    obj.livello_rischio = (r==='basso'||r==='medio'||r==='alto') ? r : 'medio';
-
-    if(!Array.isArray(obj.bottoni_scelta)) obj.bottoni_scelta=[];
-    obj.bottoni_scelta = obj.bottoni_scelta.map(x=>String(x)).filter(Boolean).slice(0,4);
-
-    // controlli minimi obbligatori
-    if(!obj.testo_domanda) throw new Error('JSON incompleto: manca "testo_domanda".');
-    if(obj.tipo==='domanda' && obj.bottoni_scelta.length<2)
-      throw new Error('JSON incompleto: una "domanda" richiede almeno 2 bottoni_scelta.');
-    return obj;
-  }
-
-  // — Requisiti 1/5/7 — Chiamata a Gemini. Ritorna l'oggetto JSON validato.
-  async function ask(diag, nuovaRisposta, imgDataUrl){
-    const key=CocoStore.getApiKey();
-    if(!key){ const err=new Error('Configurare prima la chiave Gemini nelle Impostazioni AI'); err.code='NO_KEY'; throw err; }
-    const model=CocoStore.getModel();
-    const url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent?key='+encodeURIComponent(key);
-    const body={
-      system_instruction:{ parts:[{ text: systemPrompt() }] },
-      contents: buildContents(diag, nuovaRisposta, imgDataUrl),
-      generationConfig:{ response_mime_type:'application/json', temperature:0.4, maxOutputTokens:1024 }
-    };
-    let res;
-    try{
-      res=await fetch(url,{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
-    }catch(e){ throw new Error('Errore di connessione a Gemini: '+(e.message||e)); }
-    if(!res.ok){
-      let det=''; try{ det=(await res.text()).slice(0,300); }catch(e){}
-      if(res.status===400 && /API key/i.test(det)) throw new Error('Chiave Gemini non valida (HTTP 400).');
-      throw new Error('Gemini ha risposto con errore HTTP '+res.status+(det?(': '+det):''));
-    }
-    const data=await res.json();
-    const cand=(data.candidates||[])[0]||{};
-    const txt=((cand.content||{}).parts||[]).map(p=>p.text||'').join('').trim();
-    if(!txt) throw new Error('Gemini non ha restituito testo (possibile blocco di sicurezza).');
-    return parseAndValidate(txt);
-  }
-
-  return { systemPrompt, buildContents, parseAndValidate, ask, hasKey };
-})();
-
-/* ──────────────────────────────────────────────────────────────────
-   MODULO 3 · CocoDiag — Logica diagnosi (record, cronologia, conclusione)
-   Non tocca lo storage direttamente: usa solo CocoStore.
-   ────────────────────────────────────────────────────────────────── */
-const CocoDiag = (function(){
-
-  function _now(){ const d=new Date(); return { data:(typeof fmt==='function'?fmt(d):d.toISOString().slice(0,10)),
-    ora:String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0') }; }
-
-  // — Requisito 2 — Ogni diagnosi appartiene a una commessa specifica
-  function create(commessaId, titolo, problemaIniziale){
-    const t=(typeof currentTec==='function')?currentTec():null;
-    const n=_now();
-    const diag={
-      id:'dg'+Date.now(),
-      commessaId: commessaId||null,
-      data:n.data, ora:n.ora, creato:Date.now(),
-      operatore:(t&&t.nome)||'—', operatoreId:(t&&t.id)||null,
-      titolo:(titolo||'Diagnosi').trim(),
-      stato:'in_corso',                 // in_corso | conclusa
-      problemaIniziale:(problemaIniziale||'').trim(),
-      cronologia:[],                    // [{t:'ai'|'risposta', ...}] — Requisito 6
-      immagini:[],                      // dataURL salvate (Requisito 7)
-      logErrori:[],                     // log JSON non validi (Requisito 5)
-      conclusione:'', azioni:'', rischio:''
-    };
-    return CocoStore.upsert(diag);
-  }
-
-  // aggiunge il turno AI alla cronologia (la domanda/conclusione in JSON)
-  function pushAI(diag, jsonObj){
-    diag.cronologia.push({ t:'ai', json:jsonObj, ts:Date.now() });
-    return CocoStore.upsert(diag);
-  }
-  // aggiunge la risposta del tecnico (con eventuale immagine) — Requisito 6
-  function pushRisposta(diag, testo, imgDataUrl){
-    const turn={ t:'risposta', testo:testo||'', ts:Date.now() };
-    if(imgDataUrl){ turn.img=imgDataUrl; diag.immagini.push({ id:'im'+Date.now(), img:imgDataUrl, ts:Date.now() }); }
-    diag.cronologia.push(turn);
-    return CocoStore.upsert(diag);
-  }
-  function pushErrore(diag, messaggio){
-    diag.logErrori.push({ ts:Date.now(), msg:String(messaggio||'') });
-    return CocoStore.upsert(diag);
-  }
-
-  // — Requisiti 8 & 9 — Conclusione: salva esito, crea EVENTO in commessa e MEMORIA OPERATIVA
-  function conclude(diag, jsonObj){
-    const n=_now();
-    diag.stato='conclusa';
-    diag.conclusione = jsonObj.testo_domanda||'';
-    diag.azioni      = jsonObj.prossima_azione||'';
-    diag.rischio     = jsonObj.livello_rischio||'medio';
-    diag.note        = jsonObj.note_tecniche||'';
-    diag.chiusoIl    = Date.now();
-    CocoStore.upsert(diag);
-
-    // Requisito 8 — evento automatico nella cronologia della commessa (agenda)
-    try{
-      const prio = diag.rischio==='alto' ? 'urgente' : (diag.rischio==='basso' ? 'info' : 'attenzione');
-      const note = 'Conclusione: '+(diag.conclusione||'—') + (diag.azioni?('\nAzioni: '+diag.azioni):'');
-      state.eventi = state.eventi || [];
-      state.eventi.push({
-        id:'ev'+Date.now(), titolo:'🔧 Diagnosi: '+(diag.titolo||'—'),
-        tipo:'sopralluogo', prio, data:n.data, ora:n.ora,
-        commessaId:diag.commessaId||null, note, done:false, diagId:diag.id
-      });
-    }catch(e){}
-
-    // Requisito 9 — memoria operativa richiamabile in futuro
-    try{
-      state.promemoria = state.promemoria || [];
-      const testo='[Diagnosi] '+(diag.titolo||'—')+' — '+(diag.conclusione||'') + (diag.azioni?(' · Azioni: '+diag.azioni):'');
-      state.promemoria.push({ id:'pm'+Date.now(), testo, tipo:'dafare',
-        commessaId:diag.commessaId||null, scadenza:'', fatto:false, creato:Date.now(), origine:'diagnosi', diagId:diag.id });
-    }catch(e){}
-
-    if(typeof save==='function') save();
-    if(typeof renderAll==='function') renderAll();
-    return diag;
-  }
-
-  function reopen(diag){ diag.stato='in_corso'; return CocoStore.upsert(diag); }
-
-  // ultimo turno AI (domanda/conclusione corrente)
-  function ultimoAI(diag){
-    for(let i=diag.cronologia.length-1;i>=0;i--){ if(diag.cronologia[i].t==='ai') return diag.cronologia[i].json; }
-    return null;
-  }
-
-  return { create, pushAI, pushRisposta, pushErrore, conclude, reopen, ultimoAI };
-})();
-
-
-/* ════════════════════════════════════════════════════════════════════
-   STRATO UI · Troubleshooting Mode (touch friendly — Requisito 4)
-   Usa gli overlay esistenti (_bfOv) e schermate fullscreen come gpsLauncher.
-   ════════════════════════════════════════════════════════════════════ */
-
-// stile pulsanti grandi riusabile (NO dropdown, NO campi piccoli)
-const TBS_BTN = 'width:100%;padding:18px 16px;border:1px solid var(--border,#2a2f42);border-radius:14px;background:var(--surface2,#1c2030);color:var(--text,#fff);font-size:17px;font-weight:600;font-family:inherit;text-align:left;cursor:pointer;margin-bottom:10px';
-
-function _tbsRischioColor(r){ return r==='alto'?'#ef4444':(r==='basso'?'#22c55e':'#eab308'); }
-function _tbsRischioLbl(r){ return r==='alto'?'🔴 Rischio alto':(r==='basso'?'🟢 Rischio basso':'🟡 Rischio medio'); }
-
-/* ── Requisito 1 — IMPOSTAZIONI AI (chiave Gemini: salva/modifica/elimina) ── */
-function tbsImpostazioniAI(){
-  if(typeof closeHdrMenu==='function') closeHdrMenu();
-  if(typeof CocoStore==='undefined' || typeof CocoAI==='undefined'){ try{ alert('Moduli AI non caricati. Ricarica la pagina forzando l\'aggiornamento (svuota la cache del sito).'); }catch(e){} return; }
-  try{
-  const has = CocoAI.hasKey();
-  const masked = has ? '••••••••••••' + (CocoStore.getApiKey().slice(-4)) : '';
-  const model = CocoStore.getModel();
-  const opt = m => '<option value="'+m+'"'+(m===model?' selected':'')+'>'+m+'</option>';
-  const inner = `
-    <div style="font-size:13px;color:var(--text3,#b0b8cc);margin-bottom:12px;line-height:1.5">
-      Inserisci la tua <b>chiave API Google Gemini</b>. Viene salvata <b>solo su questo dispositivo</b>
-      (localStorage) e non è mai presente nel codice dell'app.
-    </div>
-    <div style="font-size:12px;font-weight:600;margin-bottom:5px">🔑 API Key Gemini ${has?'<span style="color:#22c55e">(configurata)</span>':'<span style="color:#ef4444">(mancante)</span>'}</div>
-    <input id="tbs-apikey" type="password" autocomplete="off" placeholder="${has?masked:'Incolla qui la chiave…'}"
-      style="width:100%;box-sizing:border-box;padding:13px;border:1px solid var(--border,#2a2f42);border-radius:12px;background:var(--surface2,#1c2030);color:inherit;font-size:15px;font-family:inherit;margin-bottom:12px">
-    <div style="font-size:12px;font-weight:600;margin-bottom:5px">🧠 Modello</div>
-    <select id="tbs-model" style="width:100%;box-sizing:border-box;padding:13px;border:1px solid var(--border,#2a2f42);border-radius:12px;background:var(--surface2,#1c2030);color:inherit;font-size:15px;font-family:inherit;margin-bottom:14px">
-      ${opt('gemini-2.0-flash')}${opt('gemini-2.5-flash')}${opt('gemini-1.5-flash')}${opt('gemini-1.5-pro')}
-    </select>
-    <button onclick="tbsSalvaApiKey()" style="width:100%;padding:14px;border:none;border-radius:12px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;font-family:inherit;margin-bottom:8px">💾 Salva</button>
-    <div style="display:flex;gap:8px">
-      <button onclick="tbsModificaApiKey()" style="flex:1;padding:12px;border:1px solid var(--border,#2a2f42);border-radius:12px;background:transparent;color:var(--text,#fff);font-size:14px;font-family:inherit">✎ Modifica</button>
-      <button onclick="tbsEliminaApiKey()" ${has?'':'disabled'} style="flex:1;padding:12px;border:none;border-radius:12px;background:transparent;color:${has?'#ef4444':'var(--text3,#666)'};font-size:14px;font-family:inherit">🗑 Elimina</button>
-    </div>`;
-  document.body.appendChild(_bfOv('tbs-ai-ov','⚙️ Impostazioni AI', inner));
-  }catch(e){ try{ alert('Errore Impostazioni AI: '+(e&&e.message||e)); }catch(_){} }
-}
-function tbsSalvaApiKey(){            // saveApiKey()
-  const v=(document.getElementById('tbs-apikey').value||'').trim();
-  CocoStore.setModel(document.getElementById('tbs-model').value);
-  if(v && !/^•+/.test(v)){ CocoStore.setApiKey(v); }   // non sovrascrive col valore mascherato
-  const ov=document.getElementById('tbs-ai-ov'); if(ov) ov.remove();
-  alert('Impostazioni AI salvate.');
-}
-function tbsModificaApiKey(){         // edit: pulisce il campo per reinserire
-  const i=document.getElementById('tbs-apikey'); if(i){ i.value=''; i.placeholder='Inserisci la nuova chiave…'; i.focus(); }
-}
-function tbsEliminaApiKey(){          // deleteApiKey()
-  if(!CocoAI.hasKey()) return;
-  if(!confirm('Eliminare la chiave Gemini da questo dispositivo?')) return;
-  CocoStore.delApiKey();
-  const ov=document.getElementById('tbs-ai-ov'); if(ov) ov.remove();
-  tbsImpostazioniAI();
-}
-// alias richiesti esplicitamente dal Requisito 1
-function saveApiKey(k){ return CocoStore.setApiKey(k); }
-function getApiKey(){ return CocoStore.getApiKey(); }
-function deleteApiKey(){ return CocoStore.delApiKey(); }
-
-/* ── Entry point dalla commessa (Requisito 2): lista diagnosi + nuova ── */
-function tbsApriCommessa(cid){
-  if(typeof CocoStore==='undefined'){ try{ alert('Moduli AI non caricati. Ricarica la pagina forzando l\'aggiornamento.'); }catch(e){} return; }
-  try{
-  const c=(typeof getCommessa==='function')?getCommessa(cid):null;
-  const list=CocoStore.byCommessa(cid);
-  let body=`<button onclick="document.getElementById('tbs-cm-ov').remove();tbsNuovaDiagnosi('${cid}')"
-      style="width:100%;padding:14px;border:none;border-radius:12px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;font-family:inherit;margin-bottom:12px">➕ Nuova diagnosi</button>`;
-  if(!list.length){
-    body+='<div class="empty-state" style="padding:18px 10px"><div class="empty-big">🔧</div>Nessuna diagnosi per questo lavoro.</div>';
-  } else {
-    body+='<div class="card"><div class="inner-list">'+list.map(d=>_tbsRigaDiag(d,true)).join('')+'</div></div>';
-  }
-  document.body.appendChild(_bfOv('tbs-cm-ov','🔧 Troubleshooting — '+esc(c?c.nome:'Commessa'), body));
-  }catch(e){ try{ alert('Errore Troubleshooting: '+(e&&e.message||e)); }catch(_){} }
-}
-
-// riga riepilogo di una diagnosi (usata in lista commessa e nello storico)
-function _tbsRigaDiag(d, fromCommessa){
-  const c=d.commessaId&&typeof getCommessa==='function'?getCommessa(d.commessaId):null;
-  const statoTxt = d.stato==='conclusa' ? '<span style="color:#22c55e">✓ conclusa</span>' : '<span style="color:#eab308">… in corso</span>';
-  const sub = (fromCommessa?'':((c?esc(c.nome)+' · ':''))) + (_bfData?(' 📅 '+_bfData(d.data)):(' '+d.data)) + ' · 👤 '+esc(d.operatore||'—');
-  return `<div class="row-item" onclick="tbsApriDiagnosi('${d.id}')" style="align-items:flex-start">
-    <div class="ri" style="flex:1"><div class="ri-nome">${esc(d.titolo||'Diagnosi')}</div>
-    <div class="ri-meta" style="margin-top:2px">${sub} · ${statoTxt}</div></div><span style="color:var(--text3)">›</span></div>`;
-}
-
-/* ── Crea una nuova diagnosi (chiede titolo + problema) e avvia la sessione ── */
-function tbsNuovaDiagnosi(cid){
-  if(!CocoAI.hasKey()){ alert('Configurare prima la chiave Gemini nelle Impostazioni AI'); tbsImpostazioniAI(); return; }
-  const inner=`
-    <div style="font-size:12px;font-weight:600;margin-bottom:5px">Titolo diagnosi</div>
-    <input id="tbs-new-tit" placeholder="Es. UPS in blocco, quadro Fm…" style="width:100%;box-sizing:border-box;padding:13px;border:1px solid var(--border,#2a2f42);border-radius:12px;background:var(--surface2,#1c2030);color:inherit;font-size:16px;font-family:inherit;margin-bottom:12px">
-    <div style="font-size:12px;font-weight:600;margin-bottom:5px">Problema riscontrato</div>
-    <textarea id="tbs-new-prob" placeholder="Descrivi sintomo, codice errore, comportamento…" style="width:100%;box-sizing:border-box;min-height:120px;padding:13px;border:1px solid var(--border,#2a2f42);border-radius:12px;background:var(--surface2,#1c2030);color:inherit;font-size:16px;font-family:inherit;resize:vertical;margin-bottom:12px"></textarea>
-    <button onclick="tbsAvviaDiagnosi('${cid}')" style="width:100%;padding:15px;border:none;border-radius:12px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:16px;font-family:inherit">▶︎ Avvia diagnosi guidata</button>`;
-  document.body.appendChild(_bfOv('tbs-new-ov','🔧 Nuova diagnosi', inner));
-}
-function tbsAvviaDiagnosi(cid){
-  const tit=(document.getElementById('tbs-new-tit').value||'').trim();
-  const prob=(document.getElementById('tbs-new-prob').value||'').trim();
-  if(!prob){ alert('Descrivi il problema riscontrato.'); return; }
-  const ov=document.getElementById('tbs-new-ov'); if(ov) ov.remove();
-  const diag=CocoDiag.create(cid, tit||prob.slice(0,40), prob);
-  tbsSessione(diag.id);
-  tbsChiediProssima(diag.id, null, null);   // prima domanda AI
-}
-
-/* ── Schermata sessione diagnostica fullscreen (touch) — Requisito 4 ── */
-let _tbsPendingImg = null;   // immagine in attesa di essere allegata alla prossima risposta
-
-function tbsSessione(diagId){
-  const old=document.getElementById('tbs-screen'); if(old) old.remove();
-  _tbsPendingImg=null;
-  const ov=document.createElement('div'); ov.id='tbs-screen';
-  ov.style.cssText='position:fixed;inset:0;z-index:330;background:var(--bg,#0b0d12);overflow:auto;padding:14px 14px 28px;display:flex;flex-direction:column;gap:12px';
-  document.body.appendChild(ov);
-  tbsRenderSessione(diagId);
-}
-
-function tbsRenderSessione(diagId, loading, errore){
-  const ov=document.getElementById('tbs-screen'); if(!ov) return;
-  const d=CocoStore.get(diagId); if(!d){ ov.remove(); return; }
-  const corrente=CocoDiag.ultimoAI(d);
-  const c=d.commessaId&&typeof getCommessa==='function'?getCommessa(d.commessaId):null;
-
-  // header
-  let html=`<div style="display:flex;align-items:center;gap:10px">
-      <button onclick="tbsChiudiSessione()" style="width:40px;height:40px;border-radius:10px;border:1px solid var(--border,#2a2f42);background:var(--surface,#141720);color:#fff;font-size:20px">↩︎</button>
-      <div style="flex:1;min-width:0">
-        <div style="font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🔧 ${esc(d.titolo||'Diagnosi')}</div>
-        <div style="font-size:11px;color:var(--text3,#b0b8cc)">${c?esc(c.nome)+' · ':''}${d.operatore||'—'}${d.stato==='conclusa'?' · ✓ conclusa':''}</div>
-      </div></div>`;
-
-  // cronologia compatta dei passi precedenti (memoria visibile)
-  const passi=(d.cronologia||[]);
-  if(passi.length){
-    html+='<div style="display:flex;flex-direction:column;gap:6px">';
-    passi.forEach(t=>{
-      if(t.t==='ai' && t.json && t.json.tipo==='domanda'){
-        html+=`<div style="font-size:13px;color:var(--text3,#b0b8cc);padding:4px 2px">❓ ${esc(t.json.testo_domanda||'')}</div>`;
-      } else if(t.t==='risposta'){
-        html+=`<div style="align-self:flex-end;max-width:85%;background:var(--accent2,#2563eb);color:#fff;padding:8px 12px;border-radius:12px;font-size:14px">${esc(t.testo||'')}${t.img?' 📷':''}</div>`;
-      }
-    });
-    html+='</div>';
-  }
-
-  if(loading){
-    html+=`<div style="display:flex;align-items:center;gap:10px;color:var(--text3,#b0b8cc);padding:14px">
-      <div class="dot-pulse"><span></span><span></span><span></span></div> Analizzo…</div>`;
-  } else if(errore){
-    html+=`<div style="background:#ef444422;border:1px solid #ef4444;border-radius:12px;padding:12px;font-size:13px;color:#fca5a5;white-space:pre-wrap">⚠️ ${esc(errore)}</div>
-      <button onclick="tbsRiprova('${d.id}')" style="${TBS_BTN};background:var(--accent2,#2563eb);text-align:center;color:#fff">↻ Riprova</button>`;
-  } else if(corrente){
-    // riquadro domanda/conclusione corrente
-    const col=_tbsRischioColor(corrente.livello_rischio);
-    html+=`<div style="background:var(--surface,#141720);border:1px solid var(--border,#2a2f42);border-left:4px solid ${col};border-radius:14px;padding:16px">
-        <div style="font-size:12px;font-weight:700;color:${col};margin-bottom:6px">${corrente.tipo==='conclusione'?'✅ CONCLUSIONE':'❓ '+esc(corrente.titolo||'Domanda')} · ${_tbsRischioLbl(corrente.livello_rischio)}</div>
-        <div style="font-size:18px;font-weight:600;line-height:1.4">${esc(corrente.testo_domanda||'')}</div>
-        ${corrente.note_tecniche?`<div style="font-size:13px;color:var(--text3,#b0b8cc);margin-top:8px">🛈 ${esc(corrente.note_tecniche)}</div>`:''}
-        ${corrente.tipo==='conclusione'&&corrente.prossima_azione?`<div style="font-size:14px;margin-top:10px"><b>Azioni consigliate:</b> ${esc(corrente.prossima_azione)}</div>`:''}
-      </div>`;
-
-    if(corrente.tipo==='conclusione'){
-      if(d.stato!=='conclusa'){
-        html+=`<button onclick="tbsConcludi('${d.id}')" style="${TBS_BTN};background:#22c55e;color:#fff;text-align:center;font-weight:700">✔ Termina e salva (crea evento + memoria)</button>`;
-      } else {
-        html+=`<div style="text-align:center;color:#22c55e;font-weight:700;padding:8px">Diagnosi salvata ✓</div>`;
-      }
-    } else {
-      // — Requisito 4 — bottoni GRANDI di scelta
-      html+='<div style="margin-top:4px">';
-      (corrente.bottoni_scelta||[]).forEach((b,i)=>{
-        html+=`<button onclick="tbsRispondi('${d.id}',${i})" style="${TBS_BTN}">${esc(b)}</button>`;
-      });
-      html+='</div>';
-      // risposta libera + foto
-      html+=`<div style="display:flex;gap:8px;align-items:stretch">
-        <input id="tbs-free" placeholder="Oppure scrivi una risposta…" style="flex:1;box-sizing:border-box;padding:14px;border:1px solid var(--border,#2a2f42);border-radius:12px;background:var(--surface2,#1c2030);color:inherit;font-size:15px;font-family:inherit">
-        <button onclick="tbsRispondiLibero('${d.id}')" style="width:54px;border:none;border-radius:12px;background:var(--accent2,#2563eb);color:#fff;font-size:20px">↑</button>
-      </div>`;
-    }
-  }
-
-  // — Requisito 7 — Allega foto (fotocamera / galleria) + anteprima
-  if(d.stato!=='conclusa' && !loading){
-    html+=`<div style="margin-top:6px">
-      ${_tbsPendingImg?`<div style="display:flex;align-items:center;gap:10px;background:var(--surface,#141720);border:1px solid var(--border,#2a2f42);border-radius:12px;padding:8px;margin-bottom:8px">
-        <img src="${_tbsPendingImg}" style="width:54px;height:54px;object-fit:cover;border-radius:8px">
-        <div style="flex:1;font-size:13px;color:var(--text3,#b0b8cc)">Foto pronta: verrà inviata con la prossima risposta.</div>
-        <button onclick="tbsRimuoviFoto('${d.id}')" style="border:none;background:transparent;color:#ef4444;font-size:18px">🗑</button></div>`:''}
-      <div style="display:flex;gap:8px">
-        <label style="flex:1;text-align:center;padding:13px;border:1px dashed var(--border,#2a2f42);border-radius:12px;color:var(--accent,#4f9cf9);font-size:14px;cursor:pointer">📷 Fotocamera
-          <input type="file" accept="image/*" capture="environment" onchange="tbsAllegaFoto('${d.id}',this)" style="display:none"></label>
-        <label style="flex:1;text-align:center;padding:13px;border:1px dashed var(--border,#2a2f42);border-radius:12px;color:var(--accent,#4f9cf9);font-size:14px;cursor:pointer">🖼 Galleria
-          <input type="file" accept="image/*" onchange="tbsAllegaFoto('${d.id}',this)" style="display:none"></label>
-      </div></div>`;
-  }
-
-  // galleria immagini già salvate nella diagnosi
-  if((d.immagini||[]).length){
-    html+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:4px">'+
-      d.immagini.map(im=>`<img src="${im.img}" style="width:100%;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--border,#2a2f42)">`).join('')+'</div>';
-  }
-
-  ov.innerHTML=html;
-  ov.scrollTop=ov.scrollHeight;
-}
-
-function tbsChiudiSessione(){ const ov=document.getElementById('tbs-screen'); if(ov) ov.remove(); _tbsPendingImg=null; if(typeof renderAll==='function')renderAll(); }
-
-// invia una scelta tra i bottoni
-function tbsRispondi(diagId, idx){
-  const d=CocoStore.get(diagId); if(!d) return;
-  const cur=CocoDiag.ultimoAI(d); if(!cur) return;
-  const testo=(cur.bottoni_scelta||[])[idx]||'';
-  _tbsInviaRisposta(diagId, testo);
-}
-// invia una risposta libera
-function tbsRispondiLibero(diagId){
-  const i=document.getElementById('tbs-free'); const testo=(i&&i.value||'').trim();
-  if(!testo && !_tbsPendingImg){ alert('Scrivi una risposta o allega una foto.'); return; }
-  _tbsInviaRisposta(diagId, testo||'(vedi foto allegata)');
-}
-function _tbsInviaRisposta(diagId, testo){
-  const d=CocoStore.get(diagId); if(!d) return;
-  const img=_tbsPendingImg; _tbsPendingImg=null;
-  CocoDiag.pushRisposta(d, testo, img);          // Requisito 6 — memoria
-  tbsRenderSessione(diagId, true);               // loading
-  tbsChiediProssima(diagId, testo, img);
-}
-
-// chiama l'AI per il prossimo passo (gestisce validazione/errore/retry)
-async function tbsChiediProssima(diagId, rispostaTesto, imgDataUrl){
-  const d=CocoStore.get(diagId); if(!d) return;
-  // se sto inviando una risposta, l'ho già messa in cronologia: non ripassarla
-  try{
-    const obj=await CocoAI.ask(d, null, null);
-    CocoDiag.pushAI(d, obj);
-    tbsRenderSessione(diagId, false);
-  }catch(e){
-    if(e.code==='NO_KEY'){ tbsRenderSessione(diagId,false,'Configurare prima la chiave Gemini nelle Impostazioni AI'); return; }
-    CocoDiag.pushErrore(d, e.message);            // Requisito 5 — log
-    tbsRenderSessione(diagId, false, e.message);
-  }
-}
-function tbsRiprova(diagId){ tbsRenderSessione(diagId, true); tbsChiediProssima(diagId, null, null); }
-
-// — Requisito 7 — acquisizione foto (compressa) tenuta in attesa
-function tbsAllegaFoto(diagId, input){
-  const file=input.files&&input.files[0]; if(!file) return;
-  const done=(dataUrl)=>{ _tbsPendingImg=dataUrl; tbsRenderSessione(diagId,false, _tbsLastErr(diagId)); };
-  if(typeof compressImage==='function') compressImage(file,1280,.6,done);
-  else { const r=new FileReader(); r.onload=e=>done(e.target.result); r.readAsDataURL(file); }
-  input.value='';
-}
-function tbsRimuoviFoto(diagId){ _tbsPendingImg=null; tbsRenderSessione(diagId,false,_tbsLastErr(diagId)); }
-function _tbsLastErr(diagId){ const d=CocoStore.get(diagId); if(d&&!CocoDiag.ultimoAI(d)&&(d.logErrori||[]).length){ return d.logErrori[d.logErrori.length-1].msg; } return null; }
-
-// — Requisiti 8 & 9 — conclude la diagnosi
-function tbsConcludi(diagId){
-  const d=CocoStore.get(diagId); if(!d) return;
-  const cur=CocoDiag.ultimoAI(d); if(!cur||cur.tipo!=='conclusione') return;
-  CocoDiag.conclude(d, cur);
-  tbsRenderSessione(diagId, false);
-  alert('Diagnosi salvata.\n• Evento creato nella commessa\n• Memoria operativa aggiornata');
-}
-
-/* ── Riapertura di una diagnosi passata (Requisito 3) ── */
-function tbsApriDiagnosi(diagId){
-  ['tbs-cm-ov','tbs-storico-ov'].forEach(id=>{ const o=document.getElementById(id); if(o) o.remove(); });
-  const d=CocoStore.get(diagId); if(!d) return;
-  tbsSessione(diagId);
-  if(!CocoDiag.ultimoAI(d) && d.stato!=='conclusa'){ tbsRenderSessione(diagId,true); tbsChiediProssima(diagId,null,null); }
-}
-
-/* ── Requisito 3 — VISTA "Storico Diagnosi" (tutte le commesse) ── */
-function diagRenderStorico(){
-  // 1) trova (o ricrea) il contenitore: mai uscire in silenzio
-  let el=document.getElementById('diagnosi-inner');
-  if(!el){
-    const v=document.getElementById('view-diagnosi');
-    if(v){ el=document.createElement('div'); el.id='diagnosi-inner'; el.className='page-pad'; v.appendChild(el); }
-  }
-  if(!el){ try{ alert('Storico Diagnosi: contenitore non trovato nella pagina.'); }catch(e){} return; }
-  // 2) i moduli AI devono essere inizializzati
-  if(typeof CocoStore==='undefined' || typeof CocoAI==='undefined' || typeof CocoDiag==='undefined'){
-    el.innerHTML='<div class="empty-state"><div class="empty-big">⚠️</div>Moduli AI non caricati. Ricarica la pagina forzando l\'aggiornamento (Ctrl+F5 o svuota cache del sito).</div>';
-    return;
-  }
-  // 3) costruzione protetta: qualsiasi errore viene mostrato a schermo
-  try{
-  const list=CocoStore.all();
-  let html=`<button onclick="tbsNuovaDiag()" style="width:100%;padding:14px;border:none;border-radius:12px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;font-family:inherit;margin-bottom:8px">➕ Nuova diagnosi</button>
-    <div style="display:flex;gap:8px;margin-bottom:10px">
-      <button onclick="tbsImpostazioniAI()" style="flex:1;padding:12px;border:1px solid var(--border,#2a2f42);border-radius:12px;background:var(--surface,#141720);color:var(--text,#fff);font-size:14px;font-family:inherit">⚙️ Impostazioni AI ${CocoAI.hasKey()?'✓':'⚠️'}</button>
-    </div>`;
-  if(!list.length){
-    html+='<div class="empty-state"><div class="empty-big">🔧</div>Nessuna diagnosi in archivio.<br>Apri una commessa e tocca 🔧 per iniziare.</div>';
-  } else {
-    // raggruppa per commessa
-    const byC={};
-    list.forEach(d=>{ const k=d.commessaId||'_'; (byC[k]=byC[k]||[]).push(d); });
-    Object.keys(byC).forEach(k=>{
-      const c=(k!=='_'&&typeof getCommessa==='function')?getCommessa(k):null;
-      html+=`<div style="font-size:12px;font-weight:700;color:var(--text3,#b0b8cc);text-transform:uppercase;letter-spacing:.06em;margin:14px 2px 6px">${c?esc(c.nome):'Senza commessa'}</div>`;
-      html+='<div class="card"><div class="inner-list">'+byC[k].map(d=>_tbsRigaDiag(d,false)).join('')+'</div></div>';
-    });
-  }
-  el.innerHTML=html;
-  }catch(e){
-    el.innerHTML='<div class="empty-state"><div class="empty-big">⚠️</div>Errore Storico Diagnosi:<br><span style="font-size:12px;color:#fca5a5">'+(typeof esc==='function'?esc(String(e&&e.message||e)):String(e&&e.message||e))+'</span></div>';
-  }
-}
-// apre direttamente la vista storico (render esplicito + cattura errori)
-function tbsStorico(){
-  try{ if(typeof closeHdrMenu==='function') closeHdrMenu(); }catch(e){}
-  try{ setView('diagnosi', document.getElementById('nav-diagnosi')||null); }catch(e){}
-  try{ diagRenderStorico(); }catch(e){ try{ alert('Errore apertura Storico Diagnosi: '+(e&&e.message||e)); }catch(_){} }
-}
-
-/* ── Nuova diagnosi dallo Storico: scegli prima la commessa (Requisito 2) ── */
-function tbsNuovaDiag(){
-  if(typeof CocoAI==='undefined' || typeof CocoStore==='undefined'){ try{ alert('Moduli AI non caricati. Ricarica la pagina forzando l\'aggiornamento.'); }catch(e){} return; }
-  try{
-  if(!CocoAI.hasKey()){
-    if(confirm('Configurare prima la chiave Gemini nelle Impostazioni AI.\n\nAprire ora le Impostazioni AI?')) tbsImpostazioniAI();
-    return;
-  }
-  const comm=(state.commesse||[]);
-  let body;
-  if(!comm.length){
-    body='<div class="empty-state" style="padding:18px 10px"><div class="empty-big">📋</div>Nessuna commessa disponibile.</div>';
-  } else {
-    body='<div style="font-size:13px;color:var(--text3,#b0b8cc);margin-bottom:10px">Scegli il lavoro a cui collegare la diagnosi:</div>'+
-      comm.map(c=>`<button onclick="document.getElementById('tbs-pick-ov').remove();tbsApriCommessa('${c.id}')" style="${TBS_BTN}">
-        <span style="display:block;font-size:16px;font-weight:700">${esc(c.nome)}</span>
-        <span style="display:block;font-size:12px;color:var(--text3,#b0b8cc)">${esc(c.cliente||'—')}</span></button>`).join('');
-  }
-  document.body.appendChild(_bfOv('tbs-pick-ov','🔧 Nuova diagnosi — scegli il lavoro', body));
-  }catch(e){ try{ alert('Errore: '+(e&&e.message||e)); }catch(_){} }
-}
-
-/* ── Entry point per la MODALITÀ CAMPO: scegli la commessa, poi le sue diagnosi ── */
-function tbsCampo(){
-  if(typeof CocoAI==='undefined'){ try{ alert('Moduli AI non caricati. Ricarica la pagina forzando l\'aggiornamento.'); }catch(e){} return; }
-  try{
-  if(!CocoAI.hasKey()){
-    if(confirm('Configurare prima la chiave Gemini nelle Impostazioni AI.\n\nAprire ora le Impostazioni AI?')) tbsImpostazioniAI();
-    return;
-  }
-  const comm=(state.commesse||[]);
-  let body;
-  if(!comm.length){
-    body='<div class="empty-state" style="padding:18px 10px"><div class="empty-big">📋</div>Nessuna commessa disponibile.</div>';
-  } else {
-    body=comm.map(c=>`<button onclick="document.getElementById('tbs-campo-ov').remove();tbsApriCommessa('${c.id}')" style="${TBS_BTN}">
-      <span style="display:block;font-size:16px;font-weight:700">${esc(c.nome)}</span>
-      <span style="display:block;font-size:12px;color:var(--text3,#b0b8cc)">${esc(c.cliente||'—')}</span></button>`).join('');
-  }
-  document.body.appendChild(_bfOv('tbs-campo-ov','🔧 Troubleshooting — scegli il lavoro', body));
-  }catch(e){ try{ alert('Errore Troubleshooting: '+(e&&e.message||e)); }catch(_){} }
 }
 
 renderOggi = renderHome;
