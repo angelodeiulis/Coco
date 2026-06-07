@@ -797,6 +797,8 @@ textarea{resize:vertical;min-height:60px;}
   <div class="hdr-menu-sep"></div>
   <button class="hdr-menu-item" onclick="hdrMenuGo('ai')"><span class="hmi-ico">🤖</span>Coordinatore AI</button>
   <button class="hdr-menu-item" onclick="tbsStorico()"><span class="hmi-ico">🔧</span>Troubleshooting / Diagnosi</button>
+  <button class="hdr-menu-item" onclick="closeHdrMenu();spostaApri(false)"><span class="hmi-ico">🔀</span>Sposta tecnico</button>
+  <button class="hdr-menu-item" onclick="closeHdrMenu();spostaRegistro()"><span class="hmi-ico">📋</span>Registro spostamenti</button>
   <button class="hdr-menu-item" onclick="tbsImpostazioniAI()"><span class="hmi-ico">⚙️</span>Impostazioni AI</button>
   <button class="hdr-menu-item" onclick="closeHdrMenu();mostraRegistroPromemoria()"><span class="hmi-ico">🗒️</span>Registro messaggi</button>
   <button class="hdr-menu-item" onclick="registroBriefing()"><span class="hmi-ico">📋</span>Registro briefing</button>
@@ -884,6 +886,7 @@ textarea{resize:vertical;min-height:60px;}
         <div class="ai-chip" onclick="sendQuickAI('Quali tecnici sono liberi nei prossimi 7 giorni e su quale ruolo?')">🟢 Liberi ora</div>
         <div class="ai-chip" onclick="sendQuickAI('Dammi il briefing operativo per domani: chi va dove e cosa serve.')">📋 Briefing domani</div>
         <div class="ai-chip" onclick="sendQuickAI('Analizza il portafoglio offerte: totale commesse, importi per cliente, eventuali discrepanze o opportunità.')">💶 Portafoglio</div>
+        <div class="ai-chip" onclick="spostaApri(false)">🔀 Sposta tecnico</div>
       </div>
       <div class="ai-chat" id="ai-chat"></div>
       <div class="ai-input-area">
@@ -1247,6 +1250,7 @@ let state={
   checkins:[],     // GPS check-in/out cantiere: {id,tecId,commessaId,data,ym,day,in:{ts,lat,lng,acc},out}
   _aiCtx:null,     // contesto ultima domanda all'AI
   diagnosi:[],     // TROUBLESHOOTING MODE: diagnosi guidate AI per commessa
+  spostamenti:[],  // SPOSTA TECNICO: trasferte temporanee a ore {id,tecId,tecNome,origCommessaId,origFaseId,origLabel,destCommessaId,destFaseId,destLabel,data,oraInizio,oraFine,motivo,autore,creato}
 };
 let aiHistory=[];
 
@@ -1255,7 +1259,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='101';
+const APP_VERSION='103';
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -1282,6 +1286,7 @@ function save(){
   localStorage.setItem('st_chk4',JSON.stringify(state.checkins||[]));
   localStorage.setItem('st_aictx',JSON.stringify(state._aiCtx||null));
   localStorage.setItem('st_diag4',JSON.stringify(state.diagnosi||[]));
+  localStorage.setItem('st_spost',JSON.stringify(state.spostamenti||[]));
 }
 function load(){
   try{
@@ -1305,6 +1310,7 @@ function load(){
     const chk=localStorage.getItem('st_chk4');if(chk)state.checkins=JSON.parse(chk);
     const aic=localStorage.getItem('st_aictx');if(aic)state._aiCtx=JSON.parse(aic);
     const dg=localStorage.getItem('st_diag4');if(dg)state.diagnosi=JSON.parse(dg);
+    const sp=localStorage.getItem('st_spost');if(sp)state.spostamenti=JSON.parse(sp);
     // migrate old
     if(!state.commesse.length){const oc=localStorage.getItem('sietel_commesse_v1')||localStorage.getItem('st_c3');if(oc){state.commesse=JSON.parse(oc);save();}}
   }catch(err){}
@@ -1770,9 +1776,195 @@ function modalitaCampo(){
       <button onclick="document.getElementById('campo-launcher').remove();gpsLauncher()" style="${bs}"><span style="font-size:46px">🧭</span><span style="font-size:15px;font-weight:700;text-align:center">GPS cantiere</span></button>
       ${bRapp}<button onclick="document.getElementById('campo-launcher').remove();nuovoOrdineMateriali()" style="${bs}"><span style="font-size:46px">🛒</span><span style="font-size:15px;font-weight:700;text-align:center">Nuovo ordine materiali</span></button>
       <button onclick="document.getElementById('campo-launcher').remove();tbsCampo()" style="${bs}"><span style="font-size:46px">🔧</span><span style="font-size:15px;font-weight:700;text-align:center">Troubleshooting</span></button>
+      <button onclick="document.getElementById('campo-launcher').remove();spostaApri(true)" style="${bs}"><span style="font-size:46px">🔀</span><span style="font-size:15px;font-weight:700;text-align:center">Sposta tecnico</span></button>
     </div>
     <button onclick="document.getElementById('campo-launcher').remove()" style="margin-top:8px;padding:11px 20px;border:1px solid var(--border);border-radius:10px;background:transparent;color:var(--text3);font-family:inherit">↩︎ Modalità normale</button>`;
   document.body.appendChild(ov);
+}
+
+/* ═══════ SPOSTA TECNICO — trasferta temporanea a ore (Fase 1, Scenario A) ═══════
+   Registro dedicato state.spostamenti. Il tecnico resta assegnato a entrambe le fasi
+   (trasferta breve): NON tocca getConflicts né le presenze. Note generate dal registro. */
+let _spostEditId=null;   // id dello spostamento in modifica (null = nuovo)
+let _spostPending=null;  // dati validati in attesa di conferma
+
+const SPOST_MOTIVI=['Urgenza cantiere','Recupero materiali','Supporto squadra','Sopralluogo','Altro'];
+
+function _spostGG(s){ if(!s)return '?'; const p=String(s).split('-'); return p.length===3?(p[2]+'/'+p[1]+'/'+p[0]):s; }
+function _spostCommOpts(sel){ return (state.commesse||[]).map(c=>`<option value="${c.id}"${c.id===sel?' selected':''}>${esc(c.nome)}</option>`).join(''); }
+function _spostFaseOpts(cid,sel){ const c=getCommessa(cid); const fasi=c?(c.fasi||[]):[]; if(!fasi.length)return '<option value="">— nessuna fase —</option>'; return fasi.map(f=>`<option value="${f.id}"${f.id===sel?' selected':''}>${esc(f.nome)}</option>`).join(''); }
+function _spostLabel(cid,fid){ const c=getCommessa(cid); const f=getFase(cid,fid); return (c?c.nome:'?')+' → '+(f?f.nome:'?'); }
+
+// descrizione sintetica (AI + registro)
+function spostDescr(s){ return `${s.tecNome} — ${_spostGG(s.data)} ${s.oraInizio}–${s.oraFine} · ${s.motivo}: da «${s.origLabel}» verso «${s.destLabel}»`; }
+// note generate per le due commesse
+function spostNotaOrig(s){ return `${_spostGG(s.data)} · ${s.tecNome} spostato ${s.oraInizio}–${s.oraFine} — ${s.motivo}: urgenza verso «${s.destLabel}»`; }
+function spostNotaDest(s){ return `${_spostGG(s.data)} · ${s.tecNome} ${s.oraInizio}–${s.oraFine} — ${s.motivo}: urgenza da «${s.origLabel}»`; }
+
+const _SP_IN='width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:11px;font-size:15px;font-family:inherit';
+const _SP_LB='font-size:11px;color:var(--text3,#b0b8cc);text-transform:uppercase;letter-spacing:.05em;margin-top:8px;display:block';
+
+// Apre il form. prefill = record da modificare (opz.)
+function spostaApri(fromCampo){
+  try{
+    if(!(state.commesse||[]).length){ alert('Crea prima almeno una commessa con una fase.'); return; }
+    if(!(state.tecnici||[]).length){ alert('Aggiungi prima almeno un tecnico in anagrafica.'); return; }
+    const pf=_spostEditId?(state.spostamenti||[]).find(x=>x.id===_spostEditId):null;
+    const cur=(typeof currentTec==='function')?currentTec():null;
+    const tecSel=pf?pf.tecId:(cur?cur.id:(state.tecnici[0]||{}).id);
+    const origC=pf?pf.origCommessaId:(state.commesse[0]||{}).id;
+    const destC=pf?pf.destCommessaId:(state.commesse[0]||{}).id;
+    const body=`<div id="sp-body">
+      <label style="${_SP_LB}">Tecnico da spostare</label>
+      <select id="sp-tec" style="${_SP_IN}">${state.tecnici.map(t=>`<option value="${t.id}"${t.id===tecSel?' selected':''}>${esc(t.nome)} (${esc(t.ruolo||'—')})</option>`).join('')}</select>
+
+      <div style="margin-top:12px;padding:10px;border:1px solid var(--border,#2a2f42);border-radius:12px">
+        <div style="font-size:12px;font-weight:700;color:#f87171;margin-bottom:4px">DA (origine)</div>
+        <label style="${_SP_LB}">Commessa</label>
+        <select id="sp-orig-c" onchange="spostaFillFasi('orig')" style="${_SP_IN}">${_spostCommOpts(origC)}</select>
+        <label style="${_SP_LB}">Fase</label>
+        <select id="sp-orig-f" style="${_SP_IN}">${_spostFaseOpts(origC,pf?pf.origFaseId:'')}</select>
+      </div>
+
+      <div style="margin-top:10px;padding:10px;border:1px solid var(--border,#2a2f42);border-radius:12px">
+        <div style="font-size:12px;font-weight:700;color:#34d399;margin-bottom:4px">A (destinazione)</div>
+        <label style="${_SP_LB}">Commessa</label>
+        <select id="sp-dest-c" onchange="spostaFillFasi('dest')" style="${_SP_IN}">${_spostCommOpts(destC)}</select>
+        <label style="${_SP_LB}">Fase</label>
+        <select id="sp-dest-f" style="${_SP_IN}">${_spostFaseOpts(destC,pf?pf.destFaseId:'')}</select>
+      </div>
+
+      <label style="${_SP_LB}">Data</label>
+      <input type="date" id="sp-data" value="${pf?pf.data:fmt(today())}" style="${_SP_IN}">
+      <div style="display:flex;gap:8px">
+        <div style="flex:1"><label style="${_SP_LB}">Dalle ore</label><input type="time" id="sp-oi" value="${pf?pf.oraInizio:'08:00'}" style="${_SP_IN}"></div>
+        <div style="flex:1"><label style="${_SP_LB}">Alle ore</label><input type="time" id="sp-of" value="${pf?pf.oraFine:'12:00'}" style="${_SP_IN}"></div>
+      </div>
+
+      <label style="${_SP_LB}">Motivo</label>
+      <select id="sp-motivo" onchange="spostaMotivoChange()" style="${_SP_IN}">${SPOST_MOTIVI.map(m=>`<option value="${m}"${(pf&&pf.motivo===m)?' selected':''}>${m}</option>`).join('')}${(pf&&SPOST_MOTIVI.indexOf(pf.motivo)<0)?`<option value="__cur" selected>${esc(pf.motivo)}</option>`:''}</select>
+      <input type="text" id="sp-motivo-altro" placeholder="Specifica il motivo" value="${(pf&&SPOST_MOTIVI.indexOf(pf.motivo)<0)?esc(pf.motivo):''}" style="${_SP_IN};margin-top:6px;display:none">
+
+      <button onclick="spostaRiepilogo()" style="width:100%;margin-top:14px;padding:14px;border:none;border-radius:12px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:15px;font-family:inherit">Vedi riepilogo →</button>
+    </div>`;
+    document.body.appendChild(_bfOv('sp-ov', (_spostEditId?'✎ Modifica spostamento':'🔀 Sposta tecnico'), body));
+    spostaMotivoChange();
+  }catch(e){ try{ alert('Errore apertura Sposta tecnico: '+(e&&e.message||e)); }catch(_){} }
+}
+
+function spostaFillFasi(which){
+  const c=document.getElementById('sp-'+which+'-c'), f=document.getElementById('sp-'+which+'-f');
+  if(c&&f) f.innerHTML=_spostFaseOpts(c.value,'');
+}
+function spostaMotivoChange(){
+  const m=document.getElementById('sp-motivo'), alt=document.getElementById('sp-motivo-altro');
+  if(m&&alt) alt.style.display=(m.value==='Altro')?'block':'none';
+}
+
+function spostaRiepilogo(){
+  try{
+    const tecId=document.getElementById('sp-tec').value;
+    const t=getTecnico(tecId);
+    const origCommessaId=document.getElementById('sp-orig-c').value, origFaseId=document.getElementById('sp-orig-f').value;
+    const destCommessaId=document.getElementById('sp-dest-c').value, destFaseId=document.getElementById('sp-dest-f').value;
+    const data=document.getElementById('sp-data').value;
+    const oraInizio=document.getElementById('sp-oi').value, oraFine=document.getElementById('sp-of').value;
+    let motivo=document.getElementById('sp-motivo').value;
+    if(motivo==='Altro'){ motivo=(document.getElementById('sp-motivo-altro').value||'').trim()||'Altro'; }
+    else if(motivo==='__cur'){ motivo=(document.getElementById('sp-motivo-altro').value||'').trim()||'Altro'; }
+    if(!origFaseId){ alert('La commessa di origine non ha fasi: scegline un\'altra.'); return; }
+    if(!destFaseId){ alert('La commessa di destinazione non ha fasi: scegline un\'altra.'); return; }
+    if(!data||!oraInizio||!oraFine){ alert('Compila data e orari.'); return; }
+    if(oraFine<=oraInizio){ alert('L\'ora di fine deve essere successiva all\'inizio.'); return; }
+    if(origCommessaId===destCommessaId && origFaseId===destFaseId){ alert('Origine e destinazione coincidono: scegli una destinazione diversa.'); return; }
+    _spostPending={ tecId, tecNome:(t?t.nome:'?'),
+      origCommessaId, origFaseId, origLabel:_spostLabel(origCommessaId,origFaseId),
+      destCommessaId, destFaseId, destLabel:_spostLabel(destCommessaId,destFaseId),
+      data, oraInizio, oraFine, motivo };
+    const s=_spostPending;
+    const riep=`<div style="font-size:14px;line-height:1.6">
+      <div style="background:var(--surface,#141720);border:1px solid var(--border,#2a2f42);border-radius:12px;padding:12px;margin-bottom:10px">
+        <div style="font-size:13px;color:var(--text3,#b0b8cc);margin-bottom:6px">Riepilogo</div>
+        <div><b>${esc(s.tecNome)}</b></div>
+        <div>📅 ${_spostGG(s.data)} · ⏰ ${s.oraInizio}–${s.oraFine}</div>
+        <div>🎯 ${esc(s.motivo)}</div>
+        <div style="margin-top:6px">🔴 Da: «${esc(s.origLabel)}»</div>
+        <div>🟢 A: «${esc(s.destLabel)}»</div>
+      </div>
+      <div style="font-size:12px;color:var(--text3,#b0b8cc);margin-bottom:10px">Verranno generate le note sulle due commesse e un evento in Agenda. Il tecnico resta assegnato a entrambe.</div>
+      <button onclick="spostaConferma()" style="width:100%;padding:14px;border:none;border-radius:12px;background:#16a34a;color:#fff;font-weight:700;font-size:15px;font-family:inherit">✔ Conferma spostamento</button>
+      <button onclick="spostaApri(false)" style="width:100%;margin-top:8px;padding:12px;border:1px solid var(--border,#2a2f42);border-radius:12px;background:transparent;color:var(--text2,#cbd5e1);font-size:14px;font-family:inherit">✎ Modifica</button>
+    </div>`;
+    const bodyEl=document.getElementById('sp-body'); if(bodyEl) bodyEl.innerHTML=riep;
+  }catch(e){ try{ alert('Errore: '+(e&&e.message||e)); }catch(_){} }
+}
+
+function spostaConferma(){
+  try{
+    const s=_spostPending; if(!s){ alert('Dati mancanti.'); return; }
+    const cur=(typeof currentTec==='function')?currentTec():null;
+    state.spostamenti=state.spostamenti||[];
+    let rec;
+    if(_spostEditId){
+      rec=state.spostamenti.find(x=>x.id===_spostEditId);
+      if(rec){ Object.assign(rec, s); rec.modificato=Date.now(); }
+      // rimuovi vecchio evento agenda collegato
+      state.eventi=(state.eventi||[]).filter(e=>e.spostId!==_spostEditId);
+    }
+    if(!rec){
+      rec={ id:'sp'+Date.now(), ...s, autore:(cur?cur.nome:'—'), creato:Date.now() };
+      state.spostamenti.push(rec);
+    }
+    // evento Agenda nel giorno dello spostamento
+    state.eventi=state.eventi||[];
+    state.eventi.push({ id:'ev_sp_'+rec.id, titolo:'🔀 Spostamento: '+rec.tecNome,
+      tipo:'coord', prio:'attenzione', data:rec.data, ora:rec.oraInizio,
+      commessaId:rec.destCommessaId||rec.origCommessaId||null,
+      note:spostDescr(rec), done:false, spostId:rec.id });
+    save();
+    _spostEditId=null; _spostPending=null;
+    const ov=document.getElementById('sp-ov'); if(ov) ov.remove();
+    if(typeof renderAll==='function') renderAll();
+    alert('✅ Spostamento registrato.\n\n'+spostDescr(rec));
+  }catch(e){ try{ alert('Errore nel salvataggio: '+(e&&e.message||e)); }catch(_){} }
+}
+
+// Registro spostamenti: elenco con modifica/elimina
+function spostaRegistro(){
+  try{
+    const list=(state.spostamenti||[]).slice().sort((a,b)=>(b.data||'').localeCompare(a.data||'')||(b.creato||0)-(a.creato||0));
+    let body;
+    if(!list.length){
+      body='<div class="empty-state" style="padding:20px 10px"><div class="empty-big">🔀</div>Nessuno spostamento registrato.</div>';
+    } else {
+      body=list.map(s=>`<div style="background:var(--surface,#141720);border:1px solid var(--border,#2a2f42);border-radius:12px;padding:12px;margin-bottom:10px">
+        <div style="font-weight:700;font-size:15px">${esc(s.tecNome)} <span style="font-weight:400;color:var(--text3,#b0b8cc);font-size:13px">· ${_spostGG(s.data)} ${s.oraInizio}–${s.oraFine}</span></div>
+        <div style="font-size:13px;color:var(--text2,#cbd5e1);margin:4px 0">🎯 ${esc(s.motivo)}</div>
+        <div style="font-size:12.5px;color:var(--text3,#b0b8cc);line-height:1.5">
+          <div>🔴 ${esc(spostNotaOrig(s))}</div>
+          <div>🟢 ${esc(spostNotaDest(s))}</div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button onclick="spostaModifica('${s.id}')" style="flex:1;padding:9px;border:1px solid var(--border,#2a2f42);border-radius:9px;background:transparent;color:var(--accent,#4f9cf9);font-size:13px;font-family:inherit">✎ Modifica</button>
+          <button onclick="spostaElimina('${s.id}')" style="flex:1;padding:9px;border:1px solid #ef444455;border-radius:9px;background:transparent;color:#ef4444;font-size:13px;font-family:inherit">🗑 Elimina</button>
+        </div></div>`).join('');
+    }
+    document.body.appendChild(_bfOv('sp-reg-ov','📋 Registro spostamenti', body));
+  }catch(e){ try{ alert('Errore apertura registro: '+(e&&e.message||e)); }catch(_){} }
+}
+function spostaModifica(id){
+  _spostEditId=id;
+  const ov=document.getElementById('sp-reg-ov'); if(ov) ov.remove();
+  spostaApri(false);
+}
+function spostaElimina(id){
+  if(!confirm('Eliminare questo spostamento? Verrà rimosso anche l\'evento collegato in Agenda.')) return;
+  state.spostamenti=(state.spostamenti||[]).filter(x=>x.id!==id);
+  state.eventi=(state.eventi||[]).filter(e=>e.spostId!==id);
+  save();
+  const ov=document.getElementById('sp-reg-ov'); if(ov) ov.remove();
+  if(typeof renderAll==='function') renderAll();
+  spostaRegistro();
 }
 
 /* ═══════ GPS / CANTIERE (campo) ═══════ */
@@ -5226,13 +5418,19 @@ function getConflicts(){
     });
   }));
   const out=[];
+  const _gg=s=>{ if(!s)return '?'; const p=String(s).split('-'); return p.length===3?(p[2]+'/'+p[1]):s; }; // YYYY-MM-DD -> DD/MM
   Object.entries(rm).forEach(([tid,fasi])=>{
     const t=getTecnico(tid);const nome=t?t.nome:tid;
     for(let i=0;i<fasi.length;i++)for(let j=i+1;j<fasi.length;j++){
       const a=fasi[i],b=fasi[j];
       if(!a.inizio||!a.fine||!b.inizio||!b.fine)continue;
-      if(parseDate(a.inizio)<=parseDate(b.fine)&&parseDate(b.inizio)<=parseDate(a.fine))
-        out.push(`${nome}: "${a.nome}" ↔ "${b.nome}"`);
+      if(parseDate(a.inizio)<=parseDate(b.fine)&&parseDate(b.inizio)<=parseDate(a.fine)){
+        const os=parseDate(a.inizio)>=parseDate(b.inizio)?a.inizio:b.inizio; // inizio sovrapposizione
+        const oe=parseDate(a.fine)<=parseDate(b.fine)?a.fine:b.fine;          // fine sovrapposizione
+        const per=(os===oe)?_gg(os):(_gg(os)+'→'+_gg(oe));
+        const ca=a._c?a._c.nome:'?', cb=b._c?b._c.nome:'?';
+        out.push(`${nome} (${per}): «${ca} → ${a.nome}» ↔ «${cb} → ${b.nome}»`);
+      }
     }
   });
   return out;
@@ -5945,6 +6143,7 @@ function buildBackupPayload(){
       timesheets:state.timesheets,eventi:state.eventi,rapportini:state.rapportini,
       expanded:state.expanded,agendaDismissed:state.agendaDismissed,
       diagnosi:state.diagnosi||[],
+      spostamenti:state.spostamenti||[],
     },
   };
 }
@@ -6013,6 +6212,7 @@ function applyImport(payload,filename){
   if(d.expanded)state.expanded=d.expanded;
   if(d.agendaDismissed)state.agendaDismissed=d.agendaDismissed;
   if(d.diagnosi)state.diagnosi=d.diagnosi;
+  if(d.spostamenti)state.spostamenti=d.spostamenti;
   state.backup.lastImport=new Date().toISOString();
   state.backup.history.unshift({at:state.backup.lastImport,kind:'import',size:JSON.stringify(payload).length,filename:filename||''});
   save();renderAll();
@@ -6179,6 +6379,8 @@ function buildAIContext(){
   });
   const conflicts=getConflicts();
   if(conflicts.length){lines.push(`\nCONFLITTI RISORSE UMANE:`);conflicts.forEach(c=>lines.push('  ⚠ '+c));}
+  const spost=(state.spostamenti||[]).slice().sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+  if(spost.length){lines.push(`\nSPOSTAMENTI TECNICI (trasferte temporanee a ore):`);spost.forEach(s=>lines.push('  🔀 '+spostDescr(s)));}
   lines.push(buildComputiContext());
   return lines.join('\n');
 }
@@ -6195,7 +6397,7 @@ async function sendAI(customMsg){
 Il tuo obiettivo è prevenire blocchi operativi analizzando i dati in tempo reale del gestionale (Commesse, Fasi, Tecnici, Materiali, Date).
 
 REGOLE DI ANALISI:
-1. RISORSE UMANE (HR): Incrocia le date di inizio/fine delle fasi per ogni tecnico. Segnala immediatamente le sovrapposizioni. Rispetta rigorosamente i ruoli (es. non suggerire un Edile per una fase da Elettricista). Se rilevi un conflitto, proponi una riassegnazione guardando chi è libero in quelle date.
+1. RISORSE UMANE (HR): Incrocia le date di inizio/fine delle fasi per ogni tecnico. Segnala immediatamente le sovrapposizioni. Per OGNI sovrapposizione indica SEMPRE in modo esplicito: il **Tecnico**, il **periodo** di sovrapposizione, e le **DUE commesse e fasi** coinvolte nel formato «Commessa → Fase» (es. «Palazzina B → Elt» ↔ «palazzina E → Canala metallica»). Non limitarti a scrivere il nome e la data. Subito dopo proponi una soluzione concreta: quale delle due fasi spostare, oppure quale tecnico libero e idoneo per ruolo riassegnare. Rispetta rigorosamente i ruoli (es. non suggerire un Edile per una fase da Elettricista).
 2. MATERIALI E LOGISTICA: Analizza i materiali associati alle fasi. Se una fase deve iniziare a breve (entro 7-10 giorni rispetto alla data odierna), evidenzia i materiali come "Ordine Urgente" per evitare colli di bottiglia in cantiere.
 3. CONTESTO: Rispondi sempre basandoti ESCLUSIVAMENTE sui "DATI AGGIORNATI" forniti in coda a questo prompt. Se un dato manca, non inventarlo.
 
