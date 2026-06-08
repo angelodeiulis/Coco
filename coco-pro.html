@@ -1259,7 +1259,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='105';
+const APP_VERSION='106';
 const TS_COLORS={lavoro:'#22c55e',viaggio:'#4f9cf9',pausa:'#94a3b8'};
 const TS_ICONS={lavoro:'&#128296;',viaggio:'&#128663;',pausa:'&#9749;'};
 const parseDate=s=>new Date(s+'T00:00:00');
@@ -2380,7 +2380,15 @@ function _foCalc(g){
   const tot=Math.max(0,mins)/60; const fl=Math.floor(tot); const rt=(tot-fl)>0.5?fl+1:fl;
   const mal=parseFloat(g.malattia)||0;
   return {ord:Math.min(rt,8),straord:Math.max(0,rt-8),perm:(mal>0?0:Math.max(0,8-rt)),ferie:0,malattia:mal}; }
-function _foZonaTxt(g){ if(g.ferie)return 'FERIE'; if(g.malattiaG)return 'MALATTIA'; if(g.voci&&g.voci.length)return [...new Set(g.voci.map(v=>v.zona).filter(Boolean))].join(', '); return g.zona||''; }
+// collassa segmenti ripetuti in un'etichetta zona: "X — X" -> "X" (case-insensitive, mantiene il primo)
+function _dedupSeg(s){
+  if(!s) return s;
+  const parts=String(s).split(' — ').map(x=>x.trim()).filter(Boolean);
+  const seen=[], low=new Set();
+  parts.forEach(p=>{ const l=p.toLowerCase(); if(!low.has(l)){ low.add(l); seen.push(p); } });
+  return seen.join(' — ');
+}
+function _foZonaTxt(g){ if(g.ferie)return 'FERIE'; if(g.malattiaG)return 'MALATTIA'; if(g.voci&&g.voci.length)return [...new Set(g.voci.map(v=>_dedupSeg(v.zona)).filter(Boolean))].join(', '); return _dedupSeg(g.zona||''); }
 function _foSpan(g){ if(g.ferie)return ''; if(g.voci&&g.voci.length){const ins=g.voci.map(v=>v.inizio).filter(Boolean).sort();const outs=g.voci.map(v=>v.fine).filter(Boolean).sort();if(ins.length&&outs.length)return ins[0]+'–'+outs[outs.length-1];} return g.orario||''; }
 function _foCommOpts(selectedId){
   let o='<option value="">— cantiere —</option>';
