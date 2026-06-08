@@ -1259,7 +1259,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='104';
+const APP_VERSION='105';
 const TS_COLORS={lavoro:'#22c55e',viaggio:'#4f9cf9',pausa:'#94a3b8'};
 const TS_ICONS={lavoro:'&#128296;',viaggio:'&#128663;',pausa:'&#9749;'};
 const parseDate=s=>new Date(s+'T00:00:00');
@@ -1779,6 +1779,7 @@ function modalitaCampo(){
       ${bRapp}<button onclick="document.getElementById('campo-launcher').remove();nuovoOrdineMateriali()" style="${bs}"><span style="font-size:46px">🛒</span><span style="font-size:15px;font-weight:700;text-align:center">Nuovo ordine materiali</span></button>
       <button onclick="document.getElementById('campo-launcher').remove();tbsCampo()" style="${bs}"><span style="font-size:46px">🔧</span><span style="font-size:15px;font-weight:700;text-align:center">Troubleshooting</span></button>
       <button onclick="document.getElementById('campo-launcher').remove();spostaApri(true)" style="${bs}"><span style="font-size:46px">🔀</span><span style="font-size:15px;font-weight:700;text-align:center">Sposta tecnico</span></button>
+      <button onclick="document.getElementById('campo-launcher').remove();catturaRapida()" style="${bs}"><span style="font-size:46px">🧠</span><span style="font-size:15px;font-weight:700;text-align:center">Ricorda</span></button>
     </div>
     <button onclick="document.getElementById('campo-launcher').remove()" style="margin-top:8px;padding:11px 20px;border:1px solid var(--border);border-radius:10px;background:transparent;color:var(--text3);font-family:inherit">↩︎ Modalità normale</button>`;
   document.body.appendChild(ov);
@@ -6144,6 +6145,7 @@ function buildBackupPayload(){
       expanded:state.expanded,agendaDismissed:state.agendaDismissed,
       diagnosi:state.diagnosi||[],
       spostamenti:state.spostamenti||[],
+      promemoria:state.promemoria||[],
     },
   };
 }
@@ -6213,6 +6215,7 @@ function applyImport(payload,filename){
   if(d.agendaDismissed)state.agendaDismissed=d.agendaDismissed;
   if(d.diagnosi)state.diagnosi=d.diagnosi;
   if(d.spostamenti)state.spostamenti=d.spostamenti;
+  if(d.promemoria)state.promemoria=d.promemoria;
   state.backup.lastImport=new Date().toISOString();
   state.backup.history.unshift({at:state.backup.lastImport,kind:'import',size:JSON.stringify(payload).length,filename:filename||''});
   save();renderAll();
@@ -7525,7 +7528,7 @@ function catturaRapida(){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   apriSheetCattura(!!SR, SR);
 }
-function salvaPromemoria(testo, commessaId){
+function salvaPromemoria(testo, commessaId, faseId){
   if(!testo || !testo.trim()) return;
   testo = testo.trim();
   const low = testo.toLowerCase();
@@ -7533,8 +7536,9 @@ function salvaPromemoria(testo, commessaId){
              : /manca|ordin|serve|prendere|portare/.test(low) ? 'manca' : 'dafare';
   // se non è stata scelta una commessa, prova con quella di oggi
   if(commessaId===undefined){ const f0=fasiAttiveOggi()[0]; commessaId=f0?f0.c.id:null; }
+  const tec=(typeof currentTec==='function')?currentTec():null;
   state.promemoria = state.promemoria || [];
-  state.promemoria.push({ id:'pm'+Date.now(), testo, tipo, commessaId:commessaId||null, scadenza:deduciScadenza(low), fatto:false, creato:Date.now() });
+  state.promemoria.push({ id:'pm'+Date.now(), testo, tipo, commessaId:commessaId||null, faseId:faseId||null, autore:(tec?tec.nome:'—'), autoreId:(tec?tec.id:null), scadenza:deduciScadenza(low), fatto:false, creato:Date.now() });
   save();
   if(typeof renderHome==='function') renderHome();
 }
@@ -7569,7 +7573,9 @@ function apriSheetCattura(conVoce, SR){
       </div>
       <textarea id="voce-txt" placeholder="Il testo apparirà qui…" style="width:100%;min-height:88px;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:12px;font-size:16px;font-family:inherit;resize:none"></textarea>
       <label style="display:block;font-size:12px;color:var(--text3,#b0b8cc);margin:12px 0 4px">A quale commessa?</label>
-      <select id="voce-commessa" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:12px;font-size:15px;font-family:inherit">${voceOpzioniCommessa()}</select>
+      <select id="voce-commessa" onchange="voceFaseRefill()" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:12px;font-size:15px;font-family:inherit">${voceOpzioniCommessa()}</select>
+      <label style="display:block;font-size:12px;color:var(--text3,#b0b8cc);margin:12px 0 4px">A quale fase?</label>
+      <select id="voce-fase" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:12px;font-size:15px;font-family:inherit"><option value="">— Nessuna fase —</option></select>
       <div style="display:flex;gap:8px;margin-top:14px">
         ${conVoce?`<button id="voce-stop" onclick="fermaVoce()" style="flex:1;padding:13px;border:none;border-radius:10px;background:var(--surface2,#1c2030);color:var(--text,#fff);font-size:15px;font-weight:600;font-family:inherit">⏹ Fatto</button>`:''}
         <button id="voce-save" onclick="salvaVoce()" style="${conVoce?'display:none;':''}flex:2;padding:13px;border:none;border-radius:10px;background:var(--accent2,#2563eb);color:#fff;font-size:15px;font-weight:600;font-family:inherit">💾 Salva</button>
@@ -7577,6 +7583,7 @@ function apriSheetCattura(conVoce, SR){
       </div>
     </div>`;
   document.body.appendChild(ov);
+  voceFaseRefill();
   const txt=document.getElementById('voce-txt');
   if(!conVoce){ txt.focus(); return; }
 
@@ -7608,7 +7615,20 @@ function fermaVoce(){ try{ window._voceRec && window._voceRec.stop(); }catch(e){
 function salvaVoce(){
   const t=document.getElementById('voce-txt'); const v=t?t.value:'';
   const sel=document.getElementById('voce-commessa'); const cid=sel?(sel.value||null):undefined;
-  chiudiVoce(); salvaPromemoria(v, cid);
+  const fsel=document.getElementById('voce-fase'); const fid=fsel?(fsel.value||null):null;
+  chiudiVoce(); salvaPromemoria(v, cid, fid);
+}
+// opzioni fase per la commessa scelta
+function voceOpzioniFase(commessaId, selFid){
+  let o='<option value="">— Nessuna fase —</option>';
+  const c=commessaId?getCommessa(commessaId):null;
+  if(c) (c.fasi||[]).forEach(f=>{ o+=`<option value="${f.id}"${f.id===selFid?' selected':''}>${esc(f.nome)}</option>`; });
+  return o;
+}
+// riempie il menù fase in base alla commessa selezionata nella cattura
+function voceFaseRefill(){
+  const cs=document.getElementById('voce-commessa'), fs=document.getElementById('voce-fase');
+  if(cs&&fs) fs.innerHTML=voceOpzioniFase(cs.value||'', '');
 }
 // opzioni del menù commessa nella cattura (default: commessa di oggi)
 function voceOpzioniCommessa(){
@@ -7631,10 +7651,12 @@ function mostraRegistroPromemoria(){
     body='<div class="card"><div class="inner-list">';
     pm.forEach(p=>{
       const cn=p.commessaId?((getCommessa(p.commessaId)||{}).nome||'—'):'— nessuna —';
+      const cc=p.commessaId?getCommessa(p.commessaId):null;
+      const fn=(cc&&p.faseId)?(((cc.fasi||[]).find(x=>x.id===p.faseId)||{}).nome||''):'';
       body+=`<div class="row-item" style="align-items:flex-start;cursor:default">
         <div class="ri" style="flex:1">
           <div class="ri-nome" style="${p.fatto?'text-decoration:line-through;opacity:.5':''}">${icona(p.tipo)} ${esc(p.testo)}</div>
-          <div class="ri-meta" style="margin-top:2px">📅 ${fmtData(p.creato)} · 🏗️ ${esc(cn)}${p.scadenza?(' · ⏰ '+fmtScadenza(p.scadenza)):''}</div>
+          <div class="ri-meta" style="margin-top:2px">📅 ${fmtData(p.creato)} · 🏗️ ${esc(cn)}${fn?(' · 🔧 '+esc(fn)):''}${p.autore?(' · 👤 '+esc(p.autore)):''}${p.scadenza?(' · ⏰ '+fmtScadenza(p.scadenza)):''}</div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
           <button class="ico-btn" title="${p.fatto?'Riapri':'Fatto'}" onclick="togglePromemoria('${p.id}')">${p.fatto?'↩︎':'✓'}</button>
