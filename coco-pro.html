@@ -703,7 +703,7 @@ textarea{resize:vertical;min-height:60px;}
   <button class="nav-item" id="nav-cf-rapportini" onclick="cf_setView('rapportini',this)"><span class="nav-icon">📋</span><span class="nav-label">Rapportini</span></button>
   <button class="nav-item" id="nav-cf-lavori" onclick="cf_setView('lavori',this)"><span class="nav-icon">🏗️</span><span class="nav-label">Lavori</span></button>
 </nav>
-<button id="cf-fab-voce" onclick="catturaRapida()" title="Ricorda" style="position:fixed;right:16px;bottom:calc(var(--nav-h,60px) + var(--safe-b,0px) + 16px);z-index:80;width:56px;height:56px;border-radius:50%;border:none;background:var(--accent2,#2563eb);color:#fff;font-size:24px;box-shadow:0 6px 18px rgba(37,99,235,.5)">🧠</button>
+<button id="cf-fab-voce" onclick="catturaRapida()" title="Ricorda" style="position:fixed;right:14px;bottom:calc(var(--safe-b,0px) + 8px);z-index:80;width:52px;height:52px;border-radius:50%;border:none;background:var(--accent2,#2563eb);color:#fff;font-size:24px;box-shadow:0 6px 18px rgba(37,99,235,.5)">🧠</button>
 </div>
 <!-- ══════════ MODAL RAPPORTINO ══════════ -->
 <div class="modal-ov" id="modal-rapportino">
@@ -1259,7 +1259,9 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='103';
+const APP_VERSION='104';
+const TS_COLORS={lavoro:'#22c55e',viaggio:'#4f9cf9',pausa:'#94a3b8'};
+const TS_ICONS={lavoro:'&#128296;',viaggio:'&#128663;',pausa:'&#9749;'};
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
@@ -5113,8 +5115,6 @@ function tsForDay(dateStr){return state.timesheets.filter(v=>v.data===dateStr);}
 function tsForTecDay(tecId,dateStr){return state.timesheets.filter(v=>v.tecnicoId===tecId&&v.data===dateStr);}
 function tsForMonth(yr,mo){return state.timesheets.filter(v=>{const d=new Date(v.data);return d.getFullYear()===yr&&d.getMonth()===mo-1;});}
 function calcolaTotali(voci){let lavoro=0,viaggio=0,pausa=0;voci.forEach(v=>{const d=durataMinuti(v.oraInizio,v.oraFine);if(v.tipo==='lavoro')lavoro+=d;else if(v.tipo==='viaggio')viaggio+=d;else pausa+=d;});return{lavoro,viaggio,pausa,fatturabili:Math.max(0,lavoro+viaggio-pausa)};}
-const TS_COLORS={lavoro:'#22c55e',viaggio:'#4f9cf9',pausa:'#94a3b8'};
-const TS_ICONS={lavoro:'&#128296;',viaggio:'&#128663;',pausa:'&#9749;'};
 
 function renderPresenze(){
   const el=document.getElementById('report-inner');
