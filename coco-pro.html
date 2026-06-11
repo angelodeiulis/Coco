@@ -1117,6 +1117,10 @@ textarea{resize:vertical;min-height:60px;}
         <div class="ff"><label>Fornitore</label><input type="text" id="mm-fornitore" placeholder="Es. ABB, Schneider, Eaton..."></div>
         <div class="ff"><label>Codice fornitore</label><input type="text" id="mm-codice" placeholder="Es. 2CDS251001R0164"></div>
       </div>
+      <div class="form-row">
+        <div class="ff"><label>Scorta minima (soglia)</label><input type="number" id="mm-soglia" min="0" step="any" placeholder="0 = nessuna"></div>
+        <div class="ff"><label>Posizione</label><input type="text" id="mm-pos" placeholder="Es. Scaffale A3, Furgone 2"></div>
+      </div>
       <div class="ff"><label>Nome (opzionale)</label><input type="text" id="mm-nome" placeholder="Vuoto = generato da categoria/tipologia"></div>
       <div class="ff"><label>Note / Specifiche</label><textarea id="mm-note" placeholder="Descrizione tecnica, sezione, tensione..."></textarea></div>
     </div>
@@ -1259,7 +1263,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='108';
+const APP_VERSION='109';
 const TS_COLORS={lavoro:'#22c55e',viaggio:'#4f9cf9',pausa:'#94a3b8'};
 const TS_ICONS={lavoro:'&#128296;',viaggio:'&#128663;',pausa:'&#9749;'};
 const parseDate=s=>new Date(s+'T00:00:00');
@@ -1334,6 +1338,8 @@ function registraMovimento(id,tipo,qty,nota,data){
 }
 function caricoArticolo(id){const q=prompt('CARICO — quantità da aggiungere al magazzino:');if(q===null)return;const n=(prompt('Nota (es. fornitore, n° bolla) — opzionale:','')||'').trim();registraMovimento(id,'carico',q,n);showMaterialeDetail(id);}
 function scaricoArticolo(id){const q=prompt('SCARICO — quantità da togliere dal magazzino:');if(q===null)return;const n=(prompt('Nota (es. lavoro/causale) — opzionale:','')||'').trim();registraMovimento(id,'scarico',q,n);showMaterialeDetail(id);}
+function setSoglia(id){const m=getMateriale(id);if(!m)return;const v=prompt('Scorta minima (soglia) per "'+matEtichetta(m)+'" ('+m.unita+'):\n0 = nessuna soglia',m.soglia||0);if(v===null)return;m.soglia=parseFloat(String(v).replace(',','.'))||0;save();if(typeof renderAll==='function')renderAll();showMaterialeDetail(id);}
+function setPosizione(id){const m=getMateriale(id);if(!m)return;const v=prompt('Posizione in magazzino (scaffale/zona):',m.posizione||'');if(v===null)return;m.posizione=v.trim();save();if(typeof renderAll==='function')renderAll();showMaterialeDetail(id);}
 function setFornitore(id){const m=getMateriale(id);if(!m)return;const v=prompt('Fornitore per "'+matEtichetta(m)+'":',m.fornitore||'');if(v===null)return;m.fornitore=v.trim();save();if(typeof renderAll==='function')renderAll();showMaterialeDetail(id);}
 function movimentiArticolo(id){return (state.movimenti||[]).filter(x=>x.articoloId===id).sort((a,b)=>(b.quando||0)-(a.quando||0));}
 function _movIco(t){return t==='carico'?'📥':(t==='scarico'?'📤':'✏️');}
@@ -1537,45 +1543,472 @@ function arrivoConferma(){
   const ov=document.getElementById('arrivo-ov');if(ov)ov.remove();
   apriMagazzino('sto');
 }
-function apriMagazzino(tab){
-  tab=tab||'mag';
-  const arts=state.materiali.slice().sort((a,b)=>matEtichetta(a).localeCompare(matEtichetta(b)));
-  let magBody;
-  if(!arts.length){ magBody='<div class="empty-state" style="padding:20px 10px"><div class="empty-big">📦</div>Catalogo vuoto.</div>'; }
-  else { magBody='<div class="card"><div class="inner-list">'+arts.map(m=>{ const i=magInfo(m);
-      return `<div class="row-item" onclick="setTimeout(function(){var o=document.getElementById('mag-ov');if(o)o.remove();showMaterialeDetail('${m.id}');},0)" style="align-items:center">
-        <div class="ri" style="flex:1"><div class="ri-nome">${esc(matEtichetta(m))}</div>
-        <div class="ri-meta" style="margin-top:2px">disp: <b style="color:${i.disponibile>0?'#22c55e':'var(--text3)'}">${i.disponibile} ${m.unita}</b> · scorta ${i.sc} · impegnato ${i.impegnato}${m.fornitore?(' · 🏢 '+esc(m.fornitore)):''}</div></div>
-        <span style="color:var(--text3)">›</span></div>`;
-    }).join('')+'</div></div>'; }
-  const ord=materialiDaOrdinare();
-  let ordBody;
-  if(!ord.length){ ordBody='<div class="empty-state" style="padding:20px 10px"><div class="empty-big">✅</div>Nessun materiale da ordinare.</div>'; }
-  else {
-    const gruppi={}; ord.forEach(o=>{const f=(o.m.fornitore||'').trim()||'Senza fornitore'; (gruppi[f]=gruppi[f]||[]).push(o);});
-    ordBody='<div style="text-align:right;margin-bottom:8px"><button onclick="condividiDaOrdinare()" style="padding:8px 12px;border:none;border-radius:8px;background:var(--accent2,#2563eb);color:#fff;font-size:12px;font-weight:600;font-family:inherit">📤 Invia lista a Claude</button></div>'+
-    Object.keys(gruppi).sort().map(forn=>`<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;color:var(--accent,#4f9cf9);margin-bottom:5px">🏢 ${esc(forn)}</div>`+
-      gruppi[forn].map(o=>{
-        const dett=o.righe.map(r=>`<div style="font-size:11px;color:var(--text3);padding-left:6px;margin-top:2px">– ${esc(r.commessa.nome)}${r.fase.nome?(' › '+esc(r.fase.nome)):''} · ${r.u.qty} ${o.m.unita}${r.u.richiedente?(' · 👤 '+esc(r.u.richiedente)):''}</div>`).join('');
-        return `<div style="background:var(--bg);border:1px solid rgba(245,158,11,.35);border-radius:10px;padding:9px 11px;margin-bottom:8px">
-          <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:600;font-size:13px">${esc(matEtichetta(o.m))}</span><span style="font-family:var(--mono);color:#f59e0b;font-weight:700">${o.qty} ${o.m.unita}</span></div>${dett}</div>`;
-      }).join('')+`</div>`).join('');
+function apriMagazzino(tab){ CocoMag.apri(tab); }
+
+/* ══════════════════════════════════════════════════════════════════
+   MAGAZZINO V2 · CocoMag — assistente logistico intelligente
+   Dashboard KPI · card · 3 sezioni automatiche · soglia minima ·
+   movimenti · ricerca live · chip filtri · suggerimenti proattivi
+   (regole locali + AI) · input in linguaggio naturale · lista
+   acquisti · ordini in arrivo · collegamento con l'agenda.
+   Retro-compatibile: usa state.materiali / state.movimenti /
+   magInfo() / registraMovimento() esistenti. Nuovi campi opzionali
+   sull'articolo: soglia (scorta minima), posizione, inArrivo[].
+   ══════════════════════════════════════════════════════════════════ */
+const CocoMag=(function(){
+  const F={q:'',chip:'tutti',view:'main'};
+  let _ai=null;          // ultima analisi AI {quando,testo}
+  let _nlPend=null;      // proposta NL in attesa di conferma
+
+  /* ── classificazione articolo (retro-compatibile) ── */
+  function kInfo(m){
+    const i=magInfo(m);
+    const soglia=parseFloat(m.soglia)||0;
+    const arr=(m.inArrivo||[]);
+    const arrQty=arr.reduce((s,o)=>s+(parseFloat(o.qty)||0),0);
+    const sotto=soglia>0 && i.sc>0 && i.sc<=soglia;
+    const rosso=i.manca>0 || (soglia>0 && i.sc<=0);
+    return Object.assign(i,{soglia,arr,arrQty,sotto,rosso,esaurito:i.sc<=0,
+      stato:rosso?'rosso':(sotto?'giallo':'verde')});
   }
-  const movs=(state.movimenti||[]).slice().sort((a,b)=>(b.quando||0)-(a.quando||0)).slice(0,80);
-  let stoBody;
-  if(!movs.length){ stoBody='<div class="empty-state" style="padding:20px 10px"><div class="empty-big">📜</div>Nessun movimento registrato.</div>'; }
-  else { stoBody='<div class="card"><div class="inner-list">'+movs.map(mv=>{const m=getMateriale(mv.articoloId);return `<div class="row-item" style="align-items:center">
-      <div class="ri" style="flex:1"><div class="ri-nome" style="font-size:13px">${m?esc(matEtichetta(m)):'(articolo eliminato)'}</div>
-      <div class="ri-meta" style="margin-top:2px">${_bfData(mv.data)} · 👤 ${esc(mv.autore||'—')}${mv.nota?(' · '+esc(mv.nota)):''}</div></div>
-      <span style="font-family:var(--mono);font-weight:700;color:${mv.tipo==='carico'?'#22c55e':(mv.tipo==='scarico'?'#f59e0b':'var(--text2)')}">${_movLbl(mv)}${m?(' '+m.unita):''}</span></div>`;}).join('')+'</div></div>'; }
-  const tb=(id,lbl)=>`<button onclick="apriMagazzino('${id}')" style="flex:1;padding:9px 4px;border:none;border-radius:9px;font-weight:700;font-size:12px;font-family:inherit;${tab===id?'background:var(--accent2,#2563eb);color:#fff':'background:var(--surface2,#1c2030);color:var(--text2)'}">${lbl}</button>`;
-  const inner=`<div style="display:flex;gap:6px;margin-bottom:10px">${tb('mag','📦 Magazzino')}${tb('ord','🛒 Da ordinare ('+ord.length+')')}${tb('sto','📜 Storico')}</div>`+
-    `<button onclick="arrivoMateriale()" style="width:100%;padding:11px;border:none;border-radius:10px;background:rgba(34,197,94,.15);color:#22c55e;font-weight:700;font-size:13px;font-family:inherit;margin-bottom:12px">📥 Arrivo materiale (da fornitore o altro cantiere)</button>`+
-    (tab==='ord'?ordBody:(tab==='sto'?stoBody:magBody))+
-    (tab==='mag'?`<div style="display:flex;gap:8px;margin-top:10px"><button onclick="setTimeout(function(){var o=document.getElementById('mag-ov');if(o)o.remove();caricaMateriali();},0)" style="flex:1;padding:10px;border:none;border-radius:9px;background:var(--surface2,#1c2030);color:var(--accent);font-size:12px;font-family:inherit">📥 Carica catalogo</button><button onclick="setTimeout(function(){try{openModalMateriale();}catch(err){alert('Errore apertura articolo: '+((err&&err.message)||err));} var o=document.getElementById('mag-ov');if(o)o.remove();},0)" style="flex:1;padding:10px;border:none;border-radius:9px;background:var(--surface2,#1c2030);color:var(--accent);font-size:12px;font-family:inherit">➕ Nuovo articolo</button></div>`:'');
-  const old=document.getElementById('mag-ov'); if(old)old.remove();
-  document.body.appendChild(_bfOv('mag-ov','🏬 Magazzino',inner));
-}
+  const COL={rosso:'#ef4444',giallo:'#f59e0b',verde:'#22c55e'};
+
+  function _match(m,k){
+    if(F.chip!=='tutti'){
+      if(F.chip==='disp'){ if(k.stato!=='verde')return false; }
+      else if(F.chip==='ord'){ if(k.stato!=='rosso')return false; }
+      else if(F.chip==='sotto'){ if(!k.sotto)return false; }
+      else if(F.chip==='arrivo'){ if(!k.arr.length)return false; }
+      else if(F.chip==='esauriti'){ if(!k.esaurito)return false; }
+      else if((m.categoria||'Varie')!==F.chip)return false;
+    }
+    if(F.q){
+      const hay=(matEtichetta(m)+' '+(m.nome||'')+' '+(m.categoria||'')+' '+(m.settore||'')+' '+(m.posizione||'')+' '+(m.fornitore||'')+' '+(m.codice||'')).toLowerCase();
+      const ws=F.q.toLowerCase().split(/\s+/).filter(Boolean);
+      for(let w of ws) if(!hay.includes(w)) return false;
+    }
+    return true;
+  }
+
+  /* ── CSS iniettato una sola volta ── */
+  function _css(){
+    if(document.getElementById('mv2-css'))return;
+    const s=document.createElement('style'); s.id='mv2-css';
+    s.textContent=
+'.mv2-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}'+
+'.mv2-kpi{background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:12px;padding:10px 4px;text-align:center;cursor:pointer}'+
+'.mv2-kpi b{display:block;font-size:20px;font-family:var(--mono,monospace);line-height:1.1}'+
+'.mv2-kpi span{font-size:9.5px;color:var(--text3,#8b93a7);font-weight:700;letter-spacing:.02em}'+
+'.mv2-kpi.on{outline:2px solid var(--accent2,#2563eb)}'+
+'.mv2-in{width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:10px;color:inherit;padding:10px 12px;font-size:15px;font-family:inherit}'+
+'.mv2-chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin:8px 0 4px;-webkit-overflow-scrolling:touch;scrollbar-width:none}'+
+'.mv2-chips::-webkit-scrollbar{display:none}'+
+'.mv2-chip{flex:0 0 auto;padding:7px 12px;border-radius:20px;border:1px solid var(--border,#2a2f42);background:var(--surface2,#1c2030);color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:inherit}'+
+'.mv2-chip.on{background:var(--accent2,#2563eb);border-color:var(--accent2,#2563eb);color:#fff}'+
+'.mv2-sec{font-size:12px;font-weight:800;color:var(--text2);margin:16px 0 8px;display:flex;align-items:center;gap:6px}'+
+'.mv2-card{background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:12px;padding:10px 12px;margin-bottom:8px}'+
+'.mv2-c-top{display:flex;gap:10px;align-items:center;cursor:pointer}'+
+'.mv2-c-nome{font-size:14px;font-weight:600;line-height:1.25}'+
+'.mv2-c-meta{font-size:11px;color:var(--text3);margin-top:3px;display:flex;flex-wrap:wrap;gap:3px 10px;align-items:center}'+
+'.mv2-c-qty{font-family:var(--mono,monospace);font-size:20px;font-weight:800;text-align:right;line-height:1;flex-shrink:0}'+
+'.mv2-c-qty span{font-size:11px;color:var(--text3);font-weight:600;margin-left:3px}'+
+'.mv2-c-act{display:flex;gap:8px;margin-top:9px}'+
+'.mv2-c-act button{flex:1;padding:9px 0;border-radius:9px;font-size:16px;font-weight:800;font-family:inherit;background:var(--surface,#141720);color:var(--text2);border:1px solid var(--border,#2a2f42)}'+
+'.mv2-c-act .mv2-mi{color:#f59e0b}.mv2-c-act .mv2-pl{color:#22c55e}.mv2-c-act .mv2-ed{font-size:13px}'+
+'.mv2-stepper{display:flex;gap:6px;align-items:center;margin-top:8px;padding:8px;border:1px dashed var(--border,#2a2f42);border-radius:10px;flex-wrap:wrap}'+
+'.mv2-stepper input{width:62px;padding:8px 4px;border-radius:8px;border:1px solid var(--border,#2a2f42);background:var(--surface,#141720);color:inherit;font-size:15px;font-family:var(--mono,monospace);text-align:center}'+
+'.mv2-stepper button{padding:8px 10px;border-radius:8px;background:var(--surface,#141720);border:1px solid var(--border,#2a2f42);color:var(--text2);font-size:12px;font-weight:700;font-family:inherit}'+
+'.mv2-stepper .mv2-ok{margin-left:auto;color:#04210f;font-size:14px;padding:8px 18px;border:none}'+
+'.mv2-hint{display:flex;gap:8px;align-items:flex-start;font-size:12px;color:var(--text2);padding:7px 2px;border-bottom:1px solid var(--border,#2a2f42);line-height:1.4}'+
+'.mv2-hint:last-child{border-bottom:none}'+
+'.mv2-box{background:var(--surface2,#1c2030);border:1px solid var(--border,#2a2f42);border-radius:12px;padding:10px 12px;margin-bottom:10px}'+
+'.mv2-foot{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}'+
+'.mv2-foot button{padding:12px 6px;border-radius:10px;background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-size:12.5px;font-weight:700;font-family:inherit;border:1px solid var(--border,#2a2f42)}'+
+'.mv2-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:12px;white-space:nowrap}'+
+'.mv2-back{padding:8px 14px;border:none;border-radius:9px;background:var(--surface2,#1c2030);color:var(--text2);font-size:13px;font-weight:700;font-family:inherit;margin-bottom:10px}';
+    document.head.appendChild(s);
+  }
+
+  /* ── apertura overlay (mantiene la firma apriMagazzino(tab)) ── */
+  function apri(tab){
+    F.q='';
+    if(tab==='sto'){F.view='storico';}
+    else if(tab==='lista'){F.view='lista';}
+    else{F.view='main';F.chip=(tab==='ord'||tab==='sotto'||tab==='arrivo'||tab==='esauriti')?tab:'tutti';}
+    _css();
+    const old=document.getElementById('mag-ov'); if(old)old.remove();
+    const ov=document.createElement('div'); ov.id='mag-ov';
+    ov.style.cssText='position:fixed;inset:0;z-index:320;background:rgba(0,0,0,.8);display:flex;align-items:flex-end';
+    ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+    ov.innerHTML='<div style="background:var(--surface,#141720);width:100%;border-radius:18px 18px 0 0;display:flex;flex-direction:column;max-height:94vh;min-height:60vh;color:var(--text,#fff);font-family:var(--sans,system-ui)">'+
+      '<div style="display:flex;align-items:center;gap:10px;padding:14px 14px 6px">'+
+        '<div id="mv2-title" style="flex:1;font-weight:700;font-size:16px">🏬 Magazzino</div>'+
+        '<button onclick="document.getElementById(\'mag-ov\').remove()" style="width:34px;height:34px;border-radius:8px;border:none;background:var(--surface2,#1c2030);color:#fff;font-size:20px">×</button>'+
+      '</div>'+
+      '<div id="mv2-scroll" style="overflow-y:auto;padding:6px 14px calc(22px + env(safe-area-inset-bottom,0px))"></div>'+
+    '</div>';
+    document.body.appendChild(ov);
+    renderBody();
+  }
+
+  function refresh(){
+    if(!document.getElementById('mag-ov'))return;
+    const sc=document.getElementById('mv2-scroll'); const top=sc?sc.scrollTop:0;
+    renderBody();
+    const s2=document.getElementById('mv2-scroll'); if(s2)s2.scrollTop=top;
+  }
+
+  /* ── render principale ── */
+  function renderBody(){
+    const sc=document.getElementById('mv2-scroll'); if(!sc)return;
+    const tit=document.getElementById('mv2-title');
+    if(F.view==='storico'){ if(tit)tit.textContent='📜 Storico movimenti'; sc.innerHTML=_storico(); return; }
+    if(F.view==='lista'){ if(tit)tit.textContent='🛒 Lista acquisti'; sc.innerHTML=_lista(); return; }
+    if(tit)tit.textContent='🏬 Magazzino';
+    const all=state.materiali.map(m=>({m,k:kInfo(m)}));
+    const nV=all.filter(o=>o.k.stato==='verde').length;
+    const nG=all.filter(o=>o.k.sotto).length;
+    const nR=all.filter(o=>o.k.stato==='rosso').length;
+    let h='<div class="mv2-kpis" id="mv2-kpis">'+
+      _kpi('tutti','📦',all.length,'ARTICOLI','var(--text,#fff)')+
+      _kpi('disp','🟢',nV,'DISPONIBILI',COL.verde)+
+      _kpi('sotto','🟡',nG,'SOTTO SCORTA',COL.giallo)+
+      _kpi('ord','🔴',nR,'DA ORDINARE',COL.rosso)+
+    '</div>';
+    h+='<input class="mv2-in" id="mv2-q" type="search" placeholder="🔍 Cerca nome, categoria, posizione…" value="'+esc(F.q)+'" oninput="CocoMag.q(this.value)">';
+    h+='<div style="display:flex;gap:8px;margin-top:8px"><input class="mv2-in" id="mv2-nl" type="text" placeholder="✨ Es: «arrivati 50 m di FROR 3x1,5»" onkeydown="if(event.key===\'Enter\')CocoMag.nl()" style="flex:1"><button onclick="CocoMag.nl()" style="padding:0 16px;border:none;border-radius:10px;background:var(--accent2,#2563eb);color:#fff;font-weight:800;font-size:15px;font-family:inherit">↵</button></div>'+
+      '<div id="mv2-nl-hint" style="font-size:11px;color:var(--text3);margin-top:3px"></div><div id="mv2-nl-conf"></div>';
+    h+=_chips();
+    h+='<div id="mv2-sugg">'+_sugg(all)+'</div>';
+    h+='<div id="mv2-ai">'+(_ai?_aiBox(_ai.testo):'')+'</div>';
+    h+='<div id="mv2-list">'+_list(all)+'</div>';
+    h+='<div class="mv2-foot">'+
+      '<button onclick="arrivoMateriale()">📥 Arrivo materiale</button>'+
+      '<button onclick="CocoMag.vista(\'lista\')">🛒 Lista acquisti</button>'+
+      '<button onclick="CocoMag.vista(\'storico\')">📜 Storico</button>'+
+      '<button onclick="CocoMag.aiAnalisi()">🤖 Analisi AI</button>'+
+      '<button onclick="setTimeout(function(){var o=document.getElementById(\'mag-ov\');if(o)o.remove();openModalMateriale();},0)">➕ Nuovo articolo</button>'+
+      '<button onclick="setTimeout(function(){var o=document.getElementById(\'mag-ov\');if(o)o.remove();caricaMateriali();},0)">📦 Carica catalogo</button>'+
+    '</div>';
+    sc.innerHTML=h;
+  }
+  function _kpi(chip,ico,n,lbl,col){
+    const on=(chip==='tutti'&&F.chip==='tutti')||(chip==='disp'&&F.chip==='disp')||(chip===F.chip);
+    return '<div class="mv2-kpi'+(on?' on':'')+'" onclick="CocoMag.chip(\''+chip+'\')"><b style="color:'+col+'">'+n+'</b><span>'+ico+' '+lbl+'</span></div>';
+  }
+  function _chips(){
+    const cats=catCategorie();
+    const mk=(id,lbl)=>'<button class="mv2-chip'+(F.chip===id?' on':'')+'" onclick="CocoMag.chip(\''+esc(id).replace(/'/g,"\\'")+'\')">'+lbl+'</button>';
+    let h='<div class="mv2-chips" id="mv2-chips">'+mk('tutti','Tutti')+mk('ord','🔴 Da ordinare')+mk('sotto','🟡 Sotto scorta')+mk('arrivo','🚚 In arrivo')+mk('esauriti','⛔ Esauriti');
+    cats.forEach(c=>{h+=mk(c,esc(c));});
+    return h+'</div>';
+  }
+
+  /* ── liste / sezioni ── */
+  function _list(all){
+    const vis=all.filter(o=>_match(o.m,o.k));
+    if(!state.materiali.length) return '<div class="empty-state" style="padding:24px 10px"><div class="empty-big">📦</div>Catalogo vuoto.<br>Usa «📦 Carica catalogo» o «➕ Nuovo articolo».</div>';
+    if(!vis.length) return '<div class="empty-state" style="padding:24px 10px"><div class="empty-big">🔍</div>Nessun articolo corrisponde a ricerca/filtri.</div>';
+    const by=(a,b)=>matEtichetta(a.m).localeCompare(matEtichetta(b.m));
+    const disp=vis.filter(o=>o.k.stato!=='rosso').sort(by);
+    const arr=vis.filter(o=>o.k.arr.length).sort(by);
+    const ord=vis.filter(o=>o.k.stato==='rosso').sort(by);
+    let h='';
+    if(disp.length){h+='<div class="mv2-sec">🟢 DISPONIBILI <span style="color:var(--text3)">('+disp.length+')</span></div>'+disp.map(o=>_card(o.m,o.k,false)).join('');}
+    if(arr.length){h+='<div class="mv2-sec">🚚 IN ARRIVO <span style="color:var(--text3)">('+arr.length+')</span></div>'+arr.map(o=>_card(o.m,o.k,true)).join('');}
+    if(ord.length){h+='<div class="mv2-sec">🔴 DA ORDINARE <span style="color:var(--text3)">('+ord.length+')</span> <button onclick="CocoMag.vista(\'lista\')" style="margin-left:auto;padding:5px 10px;border:none;border-radius:8px;background:rgba(239,68,68,.15);color:#ef4444;font-size:11px;font-weight:700;font-family:inherit">🛒 Lista acquisti</button></div>'+ord.map(o=>_card(o.m,o.k,false)).join('');}
+    return h;
+  }
+  function _card(m,k,showArr){
+    const c=COL[k.stato];
+    const badges=[];
+    if(k.manca>0)badges.push('<span class="mv2-badge" style="background:rgba(239,68,68,.16);color:#ef4444">🛒 mancano '+fmtNum(k.manca)+'</span>');
+    if(k.sotto)badges.push('<span class="mv2-badge" style="background:rgba(245,158,11,.16);color:#f59e0b">🟡 soglia '+fmtNum(k.soglia)+'</span>');
+    if(k.esaurito&&!k.manca)badges.push('<span class="mv2-badge" style="background:var(--surface,#141720);color:var(--text3)">⛔ esaurito</span>');
+    if(k.arrQty>0)badges.push('<span class="mv2-badge" style="background:rgba(79,156,249,.16);color:#4f9cf9">🚚 +'+fmtNum(k.arrQty)+'</span>');
+    const meta=[];
+    meta.push('<span>'+esc(m.categoria||'Varie')+'</span>');
+    if(m.posizione)meta.push('<span>📍 '+esc(m.posizione)+'</span>');
+    if(m.fornitore)meta.push('<span>🏢 '+esc(m.fornitore)+'</span>');
+    if(k.tot>0)meta.push('<span>lavori: '+fmtNum(k.impegnato)+'/'+fmtNum(k.tot)+'</span>');
+    let h='<div class="mv2-card" style="border-left:3px solid '+c+'">'+
+      '<div class="mv2-c-top" onclick="CocoMag.det(\''+m.id+'\')">'+
+        '<div style="flex:1;min-width:0"><div class="mv2-c-nome">'+esc(matEtichetta(m))+'</div>'+
+        '<div class="mv2-c-meta">'+meta.join('')+(badges.length?(' '+badges.join(' ')):'')+'</div></div>'+
+        '<div class="mv2-c-qty" style="color:'+c+'">'+fmtNum(k.sc)+'<span>'+esc(m.unita||'')+'</span></div>'+
+      '</div>'+
+      '<div class="mv2-c-act">'+
+        '<button class="mv2-mi" onclick="CocoMag.step(\''+m.id+'\',\'scarico\')">−</button>'+
+        '<button class="mv2-pl" onclick="CocoMag.step(\''+m.id+'\',\'carico\')">＋</button>'+
+        '<button class="mv2-ed" onclick="CocoMag.det(\''+m.id+'\')">✎</button>'+
+      '</div><div id="mv2-step-'+m.id+'"></div>';
+    if(showArr&&k.arr.length){
+      h+=k.arr.map(o=>'<div style="display:flex;align-items:center;gap:8px;margin-top:8px;padding:7px 9px;background:var(--surface,#141720);border-radius:9px;font-size:12px">'+
+        '<span style="font-family:var(--mono);font-weight:700;color:#4f9cf9">+'+fmtNum(o.qty)+' '+esc(m.unita||'')+'</span>'+
+        '<span style="flex:1;color:var(--text3)">'+(o.prev?('previsto '+_bfData(o.prev)):'senza data')+(o.forn?(' · '+esc(o.forn)):'')+'</span>'+
+        '<button onclick="CocoMag.ricevi(\''+m.id+'\',\''+o.id+'\')" style="padding:6px 12px;border:none;border-radius:8px;background:rgba(34,197,94,.18);color:#22c55e;font-weight:800;font-family:inherit">✓</button>'+
+        '<button onclick="CocoMag.annullaOrdine(\''+m.id+'\',\''+o.id+'\')" style="padding:6px 10px;border:none;border-radius:8px;background:var(--surface2,#1c2030);color:var(--text3);font-family:inherit">✕</button>'+
+      '</div>').join('');
+    }
+    return h+'</div>';
+  }
+
+  /* ── stepper carico/scarico inline (movimenti, non modifica diretta) ── */
+  function step(id,tipo){
+    document.querySelectorAll('[id^="mv2-step-"]').forEach(e=>{e.innerHTML='';});
+    const el=document.getElementById('mv2-step-'+id); const m=getMateriale(id); if(!el||!m)return;
+    const col=tipo==='carico'?'#22c55e':'#f59e0b';
+    el.innerHTML='<div class="mv2-stepper" style="border-color:'+col+'88">'+
+      '<span style="color:'+col+';font-weight:800;font-size:13px">'+(tipo==='carico'?'📥 +':'📤 −')+'</span>'+
+      '<input type="number" id="mv2-qv-'+id+'" value="1" min="0" step="any" inputmode="decimal">'+
+      [5,10,25,50].map(n=>'<button onclick="document.getElementById(\'mv2-qv-'+id+'\').value='+n+'">'+n+'</button>').join('')+
+      '<input type="text" id="mv2-nt-'+id+'" placeholder="nota" style="width:90px;text-align:left;font-family:inherit;font-size:12px">'+
+      '<button class="mv2-ok" style="background:'+col+'" onclick="CocoMag.stepGo(\''+id+'\',\''+tipo+'\')">✓ OK</button>'+
+    '</div>';
+    const inp=document.getElementById('mv2-qv-'+id); if(inp){inp.focus();inp.select();}
+  }
+  function stepGo(id,tipo){
+    const v=parseFloat((document.getElementById('mv2-qv-'+id)||{}).value)||0;
+    if(v<=0){alert('Quantità non valida.');return;}
+    const nt=((document.getElementById('mv2-nt-'+id)||{}).value||'').trim();
+    registraMovimento(id,tipo,v,nt);
+    refresh();
+  }
+
+  /* ── suggerimenti proattivi (regole locali, istantanee) ── */
+  function _sugg(all){
+    const out=[]; const t=today(); const tS=fmt(t); const lim=fmt(addDays(t,7));
+    all.forEach(o=>(o.k.arr||[]).forEach(a=>{
+      if(!a.prev)return;
+      if(a.prev<tS)out.push({i:'🚚',c:'#ef4444',t:'Ordine in <b>ritardo</b>: '+esc(matEtichetta(o.m))+' ('+fmtNum(a.qty)+' '+esc(o.m.unita)+', previsto '+_bfData(a.prev)+')'});
+      else if(a.prev===tS)out.push({i:'🚚',c:'#4f9cf9',t:'In consegna <b>oggi</b>: '+esc(matEtichetta(o.m))+' ('+fmtNum(a.qty)+' '+esc(o.m.unita)+')'});
+    }));
+    const seen={};
+    state.commesse.forEach(c=>(c.fasi||[]).forEach(f=>{
+      if(f.stato==='completata'||!f.inizio||f.inizio<tS||f.inizio>lim)return;
+      (f.materiali||[]).forEach(u=>{
+        const m=getMateriale(u.id); if(!m)return; const i=magInfo(m);
+        const key=u.id+'|'+f.id; if(i.manca<=0||seen[key])return; seen[key]=1;
+        out.push({i:'⚠️',c:'#f59e0b',t:'«'+esc(f.nome)+'» ('+esc(c.nome)+') inizia il <b>'+_bfData(f.inizio)+'</b>: mancano <b>'+fmtNum(i.manca)+' '+esc(m.unita)+'</b> di '+esc(matEtichetta(m))+' — rischio ritardo'});
+      });
+    }));
+    const sotto=all.filter(o=>o.k.sotto);
+    if(sotto.length)out.push({i:'🟡',c:'#f59e0b',t:'<b>'+sotto.length+'</b> articoli sotto scorta minima: '+sotto.slice(0,3).map(o=>esc(matEtichetta(o.m))).join(', ')+(sotto.length>3?'…':'')});
+    const now=Date.now(),W=6048e5,per={};
+    (state.movimenti||[]).forEach(v=>{ if(v.tipo!=='scarico')return; const age=now-(v.quando||0);
+      if(age<W)(per[v.articoloId]=per[v.articoloId]||{r:0,p:0}).r+=(parseFloat(v.qty)||0);
+      else if(age<5*W)(per[v.articoloId]=per[v.articoloId]||{r:0,p:0}).p+=(parseFloat(v.qty)||0); });
+    Object.keys(per).forEach(id=>{ const m=getMateriale(id); if(!m)return; const d=per[id]; const md=d.p/4;
+      if(md>0&&d.r>md*1.6&&d.r>=3)out.push({i:'📈',c:'#a78bfa',t:'Consumo di '+esc(matEtichetta(m))+' in aumento: <b>'+fmtNum(d.r)+' '+esc(m.unita)+'</b> negli ultimi 7gg (media '+fmtNum(md)+'/sett.)'});});
+    if(!out.length)return '';
+    return '<div class="mv2-box"><div style="font-size:12px;font-weight:800;color:var(--text2);margin-bottom:4px">💡 SUGGERIMENTI</div>'+
+      out.slice(0,7).map(s=>'<div class="mv2-hint"><span>'+s.i+'</span><span style="flex:1;color:var(--text2)">'+s.t+'</span></div>').join('')+
+      (out.length>7?('<div style="font-size:11px;color:var(--text3);padding-top:5px">… e altri '+(out.length-7)+'</div>'):'')+'</div>';
+  }
+
+  /* ── analisi AI (Gemini, su richiesta) ── */
+  function _aiBox(txt){
+    const safe=esc(txt).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/\n/g,'<br>');
+    return '<div class="mv2-box" style="border-color:rgba(79,156,249,.4)"><div style="display:flex;align-items:center;margin-bottom:4px"><span style="font-size:12px;font-weight:800;color:#4f9cf9">🤖 ANALISI AI</span><button onclick="CocoMag.aiClear()" style="margin-left:auto;border:none;background:none;color:var(--text3);font-size:14px;font-family:inherit">✕</button></div><div style="font-size:12.5px;line-height:1.5;color:var(--text2)">'+safe+'</div></div>';
+  }
+  function aiClear(){_ai=null;const el=document.getElementById('mv2-ai');if(el)el.innerHTML='';}
+  function _aiCtx(){
+    const L=[]; const tS=fmt(today());
+    L.push('DATA ODIERNA: '+tS);
+    L.push('INVENTARIO (articolo | scorta | soglia min | fabbisogno commesse | in arrivo | posizione):');
+    state.materiali.forEach(m=>{const k=kInfo(m);
+      L.push('- '+matEtichetta(m)+' | '+fmtNum(k.sc)+' '+m.unita+' | '+(k.soglia||0)+' | '+fmtNum(k.tot)+(k.manca>0?(' (MANCANO '+fmtNum(k.manca)+')'):'')+' | '+(k.arrQty?('+'+fmtNum(k.arrQty)):'0')+' | '+(m.posizione||'-'));});
+    const movs=(state.movimenti||[]).slice().sort((a,b)=>(b.quando||0)-(a.quando||0)).slice(0,30);
+    if(movs.length){L.push('MOVIMENTI RECENTI:');movs.forEach(v=>{const m=getMateriale(v.articoloId);L.push('- '+v.data+' '+v.tipo+' '+fmtNum(v.qty)+' '+(m?matEtichetta(m):'?')+(v.nota?(' ('+v.nota+')'):''));});}
+    const lim=fmt(addDays(today(),14));
+    L.push('FASI IN PARTENZA (entro 14gg) CON MATERIALI:');
+    state.commesse.forEach(c=>(c.fasi||[]).forEach(f=>{
+      if(f.stato==='completata'||!f.inizio||f.inizio>lim)return;
+      const mats=(f.materiali||[]).map(u=>{const m=getMateriale(u.id);return m?(u.qty+' '+m.unita+' '+matEtichetta(m)):null;}).filter(Boolean).join(', ');
+      L.push('- '+c.nome+' › '+f.nome+' | inizio '+f.inizio+' | stato '+f.stato+(mats?(' | materiali: '+mats):''));
+    }));
+    return L.join('\n');
+  }
+  async function aiAnalisi(){
+    const el=document.getElementById('mv2-ai'); if(!el)return;
+    if(typeof CocoAI==='undefined'||!CocoAI.hasKey()){alert('Configura prima la chiave AI nelle Impostazioni AI (sezione Troubleshooting).');return;}
+    el.innerHTML='<div class="mv2-box" style="font-size:12px;color:var(--text3)">🤖 Analisi del magazzino in corso…</div>';
+    const sys='Sei l\'assistente logistico del magazzino di un\'impresa di impianti (elettrici, antincendio, edili). Analizza i dati e produci SOLO i punti rilevanti (max 8 righe), telegrafici, in italiano, ciascuno con indicatore: 🔴 critico (materiale mancante per fasi imminenti, esauriti necessari), 🟡 attenzione (sotto soglia, ordini da fare, consegne in ritardo), 🟢 ok/conferme. Usa **grassetto** per articoli e date. Suggerisci azioni concrete (cosa ordinare, quantità, entro quando). Niente premesse.';
+    try{
+      const reply=await CocoAI.askText(sys,[{role:'user',text:_aiCtx()}]);
+      _ai={quando:Date.now(),testo:reply||'Nessuna risposta.'};
+      el.innerHTML=_aiBox(_ai.testo);
+    }catch(e){ el.innerHTML='<div class="mv2-box" style="font-size:12px;color:#ef4444">❌ '+esc(e.message||'Errore AI')+'</div>'; }
+  }
+
+  /* ── input in linguaggio naturale ── */
+  function _nlMatch(txt){
+    const stop=['sono','di','del','della','dei','delle','che','per','con','sacchi','sacco','pannelli','pannello','metri','metro','pezzi','pezzo','rotoli','rotolo','scatole','scatola','confezioni','altri','altre','un','una','il','lo','la','i','gli','le','in','da','su','oggi','ieri','abbiamo','ho','hanno','sono','arrivati','arrivato','arrivate','usati','usato','usate','ordina','ordinare','altri','servono'];
+    const words=String(txt||'').toLowerCase().replace(/,/g,'.').replace(/[^\wàèéìòù.x]/g,' ').split(/\s+/).filter(w=>w.length>1&&!stop.includes(w)&&!/^[\d.]+$/.test(w));
+    let best=null,bs=0,tie=false;
+    state.materiali.forEach(m=>{
+      const lab=(matEtichetta(m)+' '+(m.nome||'')+' '+(m.codice||'')).toLowerCase().replace(/,/g,'.');
+      let s=0; words.forEach(w=>{ if(lab.includes(w))s+=w.length; });
+      if(s>bs){best=m;bs=s;tie=false;} else if(s===bs&&s>0&&best&&m.id!==best.id)tie=true;
+    });
+    return (bs>=3&&!tie)?best:null;
+  }
+  function _nlParse(t){
+    const low=t.toLowerCase();
+    let az=null;
+    if(/arrivat|consegnat|caricat|comprat|acquistat|ricevut|scaricato dal camion/.test(low))az='carico';
+    else if(/usat|consumat|scaricat|prelevat|installat|posat|utilizzat|presi|preso/.test(low))az='scarico';
+    else if(/ordin|servono|comprare|acquistare/.test(low))az='ordina';
+    const mN=low.replace(/,/g,'.').match(/(\d+(?:\.\d+)?)/);
+    const qty=mN?parseFloat(mN[1]):0;
+    if(!az||!qty)return null;
+    return {azione:az,qty,m:_nlMatch(t),testo:t};
+  }
+  function nl(){
+    const inp=document.getElementById('mv2-nl'); const t=(inp&&inp.value||'').trim(); if(!t)return;
+    const p=_nlParse(t);
+    if(p){ _nlShow(p); return; }
+    if(typeof CocoAI!=='undefined'&&CocoAI.hasKey()) nlAI(t);
+    else alert('Non ho capito. Scrivi ad esempio: «arrivati 50 m di FROR 3x1,5» oppure «usati 8 pannelli cartongesso».');
+  }
+  async function nlAI(t){
+    const h=document.getElementById('mv2-nl-hint'); if(h)h.textContent='🤖 Interpreto la frase…';
+    try{
+      const sys='Interpreti frasi sul magazzino di un cantiere. Rispondi SOLO con JSON valido: {"azione":"carico"|"scarico"|"ordina","qty":numero,"articolo":"nome articolo"}. carico=materiale arrivato/entrato, scarico=usato/consumato/uscito, ordina=da ordinare/acquistare.';
+      const cat=state.materiali.slice(0,200).map(m=>matEtichetta(m)).join('; ');
+      const out=await CocoAI.askText(sys,[{role:'user',text:'CATALOGO: '+cat+'\nFRASE: '+t}]);
+      const j=JSON.parse(String(out).replace(/```json|```/g,'').trim());
+      if(h)h.textContent='';
+      const az=(j.azione==='scarico'||j.azione==='ordina')?j.azione:'carico';
+      _nlShow({azione:az,qty:parseFloat(j.qty)||0,m:_nlMatch(j.articolo||t),testo:t});
+    }catch(e){ if(h)h.textContent=''; alert('Interpretazione AI fallita: '+(e.message||e)); }
+  }
+  function _nlShow(p){
+    _nlPend=p;
+    const box=document.getElementById('mv2-nl-conf'); if(!box)return;
+    const lbl=p.azione==='carico'?'📥 CARICO':(p.azione==='scarico'?'📤 SCARICO':'🛒 ORDINA');
+    const col=p.azione==='carico'?'#22c55e':(p.azione==='scarico'?'#f59e0b':'#4f9cf9');
+    const opts=state.materiali.slice().sort((a,b)=>matEtichetta(a).localeCompare(matEtichetta(b))).map(m=>'<option value="'+m.id+'"'+(p.m&&p.m.id===m.id?' selected':'')+'>'+esc(matEtichetta(m))+'</option>').join('');
+    box.innerHTML='<div class="mv2-box" style="margin-top:8px;border-color:'+col+'66">'+
+      '<div style="font-size:12px;font-weight:800;color:'+col+';margin-bottom:8px">'+lbl+' — conferma interpretazione</div>'+
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+      '<input type="number" id="mv2-nl-q" value="'+(p.qty||1)+'" min="0" step="any" inputmode="decimal" style="width:80px;padding:9px 4px;border-radius:8px;border:1px solid var(--border);background:var(--surface,#141720);color:inherit;font-family:var(--mono);text-align:center;font-size:15px">'+
+      '<select id="mv2-nl-art" class="mv2-in" style="flex:1;min-width:160px">'+opts+'</select></div>'+
+      '<div style="display:flex;gap:8px;margin-top:10px">'+
+      '<button onclick="CocoMag.nlGo()" style="flex:1;padding:11px;border:none;border-radius:9px;background:'+col+';color:#10131c;font-weight:800;font-size:14px;font-family:inherit">✓ Conferma</button>'+
+      '<button onclick="CocoMag.nlCancel()" style="padding:11px 16px;border:none;border-radius:9px;background:var(--surface2,#1c2030);color:var(--text2);font-weight:700;font-family:inherit">Annulla</button></div></div>';
+    if(!p.m){const w=document.getElementById('mv2-nl-hint');if(w)w.textContent='⚠️ Articolo non riconosciuto con certezza: selezionalo qui sotto.';}
+  }
+  function nlCancel(){_nlPend=null;const b=document.getElementById('mv2-nl-conf');if(b)b.innerHTML='';const h=document.getElementById('mv2-nl-hint');if(h)h.textContent='';}
+  function nlGo(){
+    if(!_nlPend)return;
+    const id=(document.getElementById('mv2-nl-art')||{}).value;
+    const q=parseFloat((document.getElementById('mv2-nl-q')||{}).value)||0;
+    if(!id||q<=0){alert('Articolo o quantità non validi.');return;}
+    const az=_nlPend.azione; _nlPend=null;
+    if(az==='ordina'){ const m=getMateriale(id); if(m){ m.inArrivo=m.inArrivo||[]; m.inArrivo.push({id:'oa'+Date.now(),qty:q,prev:'',forn:m.fornitore||'',creato:Date.now()}); save(); } }
+    else registraMovimento(id,az,q,'inserimento rapido');
+    const inp=document.getElementById('mv2-nl'); if(inp)inp.value='';
+    refresh();
+  }
+
+  /* ── lista acquisti automatica ── */
+  function _listaRows(){
+    const rows=[];
+    state.materiali.forEach(m=>{const k=kInfo(m);
+      if(k.stato!=='rosso'&&!k.sotto)return;
+      let cons=k.manca; if(k.soglia>0)cons=Math.max(cons,Math.ceil(k.soglia*2-k.sc)); if(cons<=0)cons=k.soglia||1;
+      cons=Math.max(0,cons-k.arrQty); if(cons<=0&&k.arrQty>0)return; if(cons<=0)cons=1;
+      const prio=(k.manca>0||k.sc<=0)?2:1;
+      const mot=[]; if(k.manca>0)mot.push('mancano '+fmtNum(k.manca)+' '+m.unita+' per i lavori'); if(k.esaurito)mot.push('esaurito'); else if(k.sotto)mot.push('sotto soglia ('+fmtNum(k.sc)+'/'+fmtNum(k.soglia)+')'); if(k.arrQty>0)mot.push('già in arrivo: '+fmtNum(k.arrQty));
+      rows.push({m,k,cons,prio,mot:mot.join(' · ')});
+    });
+    rows.sort((a,b)=>b.prio-a.prio||matEtichetta(a.m).localeCompare(matEtichetta(b.m)));
+    return rows;
+  }
+  function _listaTxt(rows){
+    const g={}; rows.forEach(r=>{const f=(r.m.fornitore||'').trim()||'Senza fornitore';(g[f]=g[f]||[]).push(r);});
+    return 'LISTA ACQUISTI — '+_bfData(fmt(today()))+'\n\n'+Object.keys(g).sort().map(f=>'FORNITORE: '+f+'\n'+g[f].map(r=>'• '+matEtichetta(r.m)+' — '+fmtNum(r.cons)+' '+r.m.unita+' ['+(r.prio===2?'PRIORITÀ ALTA':'media')+'] ('+r.mot+')').join('\n')).join('\n\n');
+  }
+  function _lista(){
+    const rows=_listaRows();
+    let h='<button class="mv2-back" onclick="CocoMag.vista(\'main\')">‹ Magazzino</button>';
+    if(!rows.length)return h+'<div class="empty-state" style="padding:24px 10px"><div class="empty-big">✅</div>Niente da ordinare: scorte ok.</div>';
+    h+='<div style="display:flex;gap:8px;margin-bottom:12px">'+
+      '<button onclick="CocoMag.copiaLista()" style="flex:1;padding:11px;border:none;border-radius:10px;background:var(--surface2,#1c2030);color:var(--accent,#4f9cf9);font-weight:700;font-size:13px;font-family:inherit;border:1px solid var(--border)">📋 Copia</button>'+
+      '<button onclick="CocoMag.claudeLista()" style="flex:1;padding:11px;border:none;border-radius:10px;background:var(--accent2,#2563eb);color:#fff;font-weight:700;font-size:13px;font-family:inherit">📤 Invia a Claude</button></div>';
+    h+=rows.map(r=>{const c=r.prio===2?'#ef4444':'#f59e0b';
+      return '<div class="mv2-card" style="border-left:3px solid '+c+'">'+
+        '<div style="display:flex;gap:10px;align-items:center">'+
+        '<div style="flex:1;min-width:0"><div class="mv2-c-nome">'+esc(matEtichetta(r.m))+'</div>'+
+        '<div class="mv2-c-meta"><span style="color:'+c+';font-weight:700">'+(r.prio===2?'🔴 priorità alta':'🟡 priorità media')+'</span><span>'+esc(r.mot)+'</span>'+(r.m.fornitore?'<span>🏢 '+esc(r.m.fornitore)+'</span>':'')+'</div></div>'+
+        '<div class="mv2-c-qty" style="color:'+c+'">'+fmtNum(r.cons)+'<span>'+esc(r.m.unita||'')+'</span></div></div>'+
+        '<div style="display:flex;gap:8px;margin-top:9px">'+
+        '<button onclick="CocoMag.ordina(\''+r.m.id+'\','+r.cons+')" style="flex:1;padding:9px;border:none;border-radius:9px;background:rgba(79,156,249,.15);color:#4f9cf9;font-weight:700;font-size:13px;font-family:inherit">🚚 Segna ordinato</button>'+
+        '<button onclick="CocoMag.det(\''+r.m.id+'\')" style="padding:9px 14px;border:none;border-radius:9px;background:var(--surface,#141720);color:var(--text2);font-family:inherit;border:1px solid var(--border)">✎</button></div></div>';
+    }).join('');
+    return h;
+  }
+  async function copiaLista(){
+    const t=_listaTxt(_listaRows());
+    try{await navigator.clipboard.writeText(t);alert('Lista copiata negli appunti.');}
+    catch(e){prompt('Copia manualmente la lista:',t);}
+  }
+  function claudeLista(){ chiediAClaude(_listaTxt(_listaRows()),{}); }
+  function ordina(id,sug){
+    const m=getMateriale(id); if(!m)return;
+    const qv=prompt('Quantità ordinata ('+m.unita+'):',sug||''); if(qv===null)return;
+    const qty=parseFloat(String(qv).replace(',','.'))||0; if(qty<=0){alert('Quantità non valida.');return;}
+    let prev=(prompt('Data prevista consegna (AAAA-MM-GG) — vuoto se non nota:','')||'').trim();
+    if(prev&&!/^\d{4}-\d{2}-\d{2}$/.test(prev)){alert('Formato data non valido: ignorata.');prev='';}
+    m.inArrivo=m.inArrivo||[];
+    m.inArrivo.push({id:'oa'+Date.now(),qty,prev,forn:m.fornitore||'',creato:Date.now()});
+    save(); refresh();
+  }
+  function ricevi(id,oid){
+    const m=getMateriale(id); if(!m)return;
+    const o=(m.inArrivo||[]).find(x=>x.id===oid); if(!o)return;
+    m.inArrivo=(m.inArrivo||[]).filter(x=>x.id!==oid);
+    registraMovimento(id,'carico',o.qty,'arrivo ordine'+(o.forn?(' '+o.forn):''));
+    refresh();
+  }
+  function annullaOrdine(id,oid){
+    const m=getMateriale(id); if(!m)return;
+    if(!confirm('Annullare questo ordine in arrivo?'))return;
+    m.inArrivo=(m.inArrivo||[]).filter(x=>x.id!==oid); save(); refresh();
+  }
+
+  /* ── storico movimenti ── */
+  function _storico(){
+    let h='<button class="mv2-back" onclick="CocoMag.vista(\'main\')">‹ Magazzino</button>';
+    const movs=(state.movimenti||[]).slice().sort((a,b)=>(b.quando||0)-(a.quando||0)).slice(0,120);
+    if(!movs.length)return h+'<div class="empty-state" style="padding:24px 10px"><div class="empty-big">📜</div>Nessun movimento registrato.</div>';
+    return h+'<div class="card"><div class="inner-list">'+movs.map(mv=>{const m=getMateriale(mv.articoloId);
+      return '<div class="row-item" style="align-items:center"><div class="ri" style="flex:1"><div class="ri-nome" style="font-size:13px">'+(m?esc(matEtichetta(m)):'(articolo eliminato)')+'</div>'+
+      '<div class="ri-meta" style="margin-top:2px">'+_bfData(mv.data)+' · 👤 '+esc(mv.autore||'—')+(mv.nota?(' · '+esc(mv.nota)):'')+'</div></div>'+
+      '<span style="font-family:var(--mono);font-weight:700;color:'+(mv.tipo==='carico'?'#22c55e':(mv.tipo==='scarico'?'#f59e0b':'var(--text2)'))+'">'+_movLbl(mv)+(m?(' '+m.unita):'')+'</span></div>';
+    }).join('')+'</div></div>';
+  }
+
+  /* ── navigazione interna ── */
+  function vista(v){F.view=v;renderBody();const sc=document.getElementById('mv2-scroll');if(sc)sc.scrollTop=0;}
+  function chip(c){
+    F.chip=(F.chip===c&&c!=='tutti')?'tutti':c;
+    _paint();
+  }
+  function q(v){F.q=v||'';_paint();}
+  function _paint(){
+    const all=state.materiali.map(m=>({m,k:kInfo(m)}));
+    const el=document.getElementById('mv2-list'); if(el)el.innerHTML=_list(all);
+    const ch=document.getElementById('mv2-chips'); if(ch)ch.outerHTML=_chips();
+    const kp=document.getElementById('mv2-kpis');
+    if(kp){const nV=all.filter(o=>o.k.stato==='verde').length,nG=all.filter(o=>o.k.sotto).length,nR=all.filter(o=>o.k.stato==='rosso').length;
+      kp.innerHTML=_kpi('tutti','📦',all.length,'ARTICOLI','var(--text,#fff)')+_kpi('disp','🟢',nV,'DISPONIBILI',COL.verde)+_kpi('sotto','🟡',nG,'SOTTO SCORTA',COL.giallo)+_kpi('ord','🔴',nR,'DA ORDINARE',COL.rosso);}
+  }
+  function det(id){ const o=document.getElementById('mag-ov'); if(o)o.remove(); showMaterialeDetail(id); }
+
+  return {apri,refresh,vista,chip,q,det,step,stepGo,nl,nlGo,nlCancel,aiAnalisi,aiClear,ordina,ricevi,annullaOrdine,copiaLista,claudeLista,kInfo};
+})();
 
 
 
@@ -4941,6 +5374,10 @@ function showMaterialeDetail(id){
       <button onclick="scaricoArticolo('${id}')" style="flex:1;padding:10px;border:none;border-radius:9px;background:rgba(245,158,11,.15);color:#f59e0b;font-weight:700;font-size:13px;font-family:inherit">📤 Scarico</button>
     </div>
     ${daOrd>0?`<div style="margin-top:8px;font-size:12px;color:#f59e0b;font-weight:600">🛒 Da ordinare nei lavori: ${daOrd} ${m.unita}</div>`:''}
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button onclick="setSoglia('${id}')" style="flex:1;padding:8px 6px;border:1px solid var(--border);border-radius:8px;background:var(--surface2,#1c2030);color:${(parseFloat(m.soglia)||0)>0&&(m.scorta||0)<=(parseFloat(m.soglia)||0)?'#f59e0b':'var(--text2)'};font-size:12px;font-family:inherit">⚠️ Soglia min: ${m.soglia||0} ✎</button>
+      <button onclick="setPosizione('${id}')" style="flex:1;padding:8px 6px;border:1px solid var(--border);border-radius:8px;background:var(--surface2,#1c2030);color:var(--text2);font-size:12px;font-family:inherit;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📍 ${m.posizione?esc(m.posizione):'—'} ✎</button>
+    </div>
   </div>`;
   html+=`<div class="sf-g"><div class="sf-lbl">Fornitore</div>
     <div style="display:flex;align-items:center;gap:10px"><div style="flex:1;font-size:14px;${m.fornitore?'':'color:var(--text3)'}">${m.fornitore?esc(m.fornitore):'— non indicato —'}</div>
@@ -5766,7 +6203,7 @@ function onSettoreChange(){
 function openModalMateriale(){
   state.editingMaterialeId=null;
   document.getElementById('mm-title').textContent='Nuovo Materiale';
-  ['mm-nome','mm-tip','mm-var','mm-pezzo','mm-fornitore','mm-codice','mm-note'].forEach(id=>document.getElementById(id).value='');
+  ['mm-nome','mm-tip','mm-var','mm-pezzo','mm-fornitore','mm-codice','mm-note','mm-soglia','mm-pos'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('mm-cat').value='Elettrico generico';
   document.getElementById('mm-unit').value='pz';
   popolaSettori('Elettrico');
@@ -5784,6 +6221,8 @@ function editMateriale(id){
   document.getElementById('mm-unit').value=m.unita||'pz';
   document.getElementById('mm-fornitore').value=m.fornitore||'';
   document.getElementById('mm-codice').value=m.codice||'';
+  document.getElementById('mm-soglia').value=m.soglia||'';
+  document.getElementById('mm-pos').value=m.posizione||'';
   document.getElementById('mm-note').value=m.note||'';
   popolaSettori(m.settore||'Elettrico');
   document.getElementById('modal-materiale').classList.add('open');
@@ -5797,7 +6236,7 @@ function saveMateriale(){
   let nome=document.getElementById('mm-nome').value.trim();
   if(!nome) nome=[categoria,tipologia,variante,pezzo].filter(Boolean).join(' · ')||categoria;
   if(!nome) return alert('Inserisci almeno categoria, tipologia o nome');
-  const data={nome,settore,categoria,tipologia,variante,pezzo,unita:document.getElementById('mm-unit').value,fornitore:document.getElementById('mm-fornitore').value.trim(),codice:document.getElementById('mm-codice').value.trim(),note:document.getElementById('mm-note').value.trim()};
+  const data={nome,settore,categoria,tipologia,variante,pezzo,unita:document.getElementById('mm-unit').value,fornitore:document.getElementById('mm-fornitore').value.trim(),codice:document.getElementById('mm-codice').value.trim(),soglia:parseFloat(document.getElementById('mm-soglia').value)||0,posizione:document.getElementById('mm-pos').value.trim(),note:document.getElementById('mm-note').value.trim()};
   if(state.editingMaterialeId){Object.assign(getMateriale(state.editingMaterialeId),data);}
   else{state.materiali.push({id:'m'+Date.now(),...data});}
   closeModal('modal-materiale');save();renderAll();
@@ -5935,6 +6374,17 @@ function buildAgendaEvents(){
       meta:['Magazzino'+(chi.length?(' · 👤 '+chi.join(', ')):'')],
       details:det,dataKey:tStr,sortKey:-60,whenLabel:'ORDINE',
       actions:[{label:'Apri magazzino',action:`apriMagazzino('ord')`,primary:true},{label:'Invia a Claude',action:`condividiDaOrdinare()`}]});
+  }
+
+  // Segnalazione MAGAZZINO: articoli sotto scorta minima (soglia)
+  const sottoSoglia=(state.materiali||[]).filter(m=>{const s=parseFloat(m.soglia)||0;return s>0&&(m.scorta||0)<=s&&magInfo(m).manca<=0;});
+  if(sottoSoglia.length){
+    events.push({id:'auto-magsoglia',auto:true,tipo:'ordine',prio:'attenzione',noDismiss:true,
+      icona:'🟡',titolo:`Sotto scorta minima (${sottoSoglia.length})`,
+      meta:['Magazzino'],
+      details:sottoSoglia.map(m=>matEtichetta(m)+': '+(m.scorta||0)+'/'+m.soglia+' '+m.unita).join(' · '),
+      dataKey:tStr,sortKey:-55,whenLabel:'SCORTA',
+      actions:[{label:'Apri magazzino',action:`apriMagazzino('sotto')`,primary:true},{label:'Lista acquisti',action:`apriMagazzino('lista')`}]});
   }
 
   getConflicts().forEach((descr,i)=>{
