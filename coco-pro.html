@@ -616,6 +616,7 @@ textarea{resize:vertical;min-height:60px;}
     <p>Seleziona il tuo nome per accedere al tuo terminale di cantiere.</p>
     <select id="login-select"></select>
     <button class="btn-save" onclick="loginGoToPin()">Avanti</button>
+    <button class="login-back" onclick="loginCaricaBackup()" style="margin-top:14px">📥 Carica ultimo backup</button>
   </div>
 
   <!-- Step 2: PIN -->
@@ -1263,13 +1264,70 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='109';
+const APP_VERSION='112';
 const TS_COLORS={lavoro:'#22c55e',viaggio:'#4f9cf9',pausa:'#94a3b8'};
 const TS_ICONS={lavoro:'&#128296;',viaggio:'&#128663;',pausa:'&#9749;'};
 const parseDate=s=>new Date(s+'T00:00:00');
 const fmtS=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});};
 const fmtF=s=>{if(!s)return'—';return parseDate(s).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});};
 const initials=n=>n.split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase();
+
+/* ── CocoIDB · copia durevole dei dati su IndexedDB ──
+   localStorage può essere svuotato dal browser sotto pressione di spazio.
+   IndexedDB ha quota maggiore e, con navigator.storage.persist(), non viene
+   sfrattato automaticamente. Qui IDB fa da SPECCHIO durevole: a ogni save()
+   scriviamo (debounced) uno snapshot di tutte le chiavi st_*; all'avvio, se il
+   localStorage risulta vuoto ma IDB ha uno snapshot, lo ripristiniamo.
+   NB: la chiave Gemini NON entra nello snapshot (resta solo nel suo slot). */
+const CocoIDB=(function(){
+  const DB='cocoDB', STORE='kv', KEY='snapshot';
+  const LS_KEYS=['st_c4','st_e4','st_t4','st_cur4','st_m4','st_ts4','st_ev4','st_ad4','st_rp4','st_bk4','st_az4','st_cm4','st_pm4','st_bf4','st_ai4','st_mov4','st_fo4','st_chk4','st_aictx','st_diag4','st_spost'];
+  let _db=null, _open=null, _timer=null;
+  function init(){
+    if(_open) return _open;
+    _open=new Promise((res)=>{
+      try{
+        if(!('indexedDB' in window)){ res(null); return; }
+        const r=indexedDB.open(DB,1);
+        r.onupgradeneeded=e=>{ const db=e.target.result; if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE); };
+        r.onsuccess=e=>{ _db=e.target.result; res(_db); };
+        r.onerror=()=>{ res(null); };
+      }catch(e){ res(null); }
+    });
+    return _open;
+  }
+  function _snapshot(){
+    const ls={}; LS_KEYS.forEach(k=>{ const v=localStorage.getItem(k); if(v!=null) ls[k]=v; });
+    return { v:1, savedAt:new Date().toISOString(), ls };
+  }
+  async function write(){
+    const db=await init(); if(!db) return false;
+    return new Promise((res)=>{
+      try{
+        const tx=db.transaction(STORE,'readwrite');
+        tx.objectStore(STORE).put(_snapshot(), KEY);
+        tx.oncomplete=()=>res(true);
+        tx.onerror=()=>res(false);
+      }catch(e){ res(false); }
+    });
+  }
+  function schedule(){ // debounce: evita di scrivere a ogni micro-save
+    if(_timer) clearTimeout(_timer);
+    _timer=setTimeout(()=>{ _timer=null; write().catch(()=>{}); }, 600);
+  }
+  async function get(){
+    const db=await init(); if(!db) return null;
+    return new Promise((res)=>{
+      try{
+        const tx=db.transaction(STORE,'readonly');
+        const rq=tx.objectStore(STORE).get(KEY);
+        rq.onsuccess=()=>res(rq.result||null);
+        rq.onerror=()=>res(null);
+      }catch(e){ res(null); }
+    });
+  }
+  return { init, schedule, write, get, LS_KEYS };
+})();
 
 function save(){
   localStorage.setItem('st_c4',JSON.stringify(state.commesse));
@@ -1293,6 +1351,7 @@ function save(){
   localStorage.setItem('st_aictx',JSON.stringify(state._aiCtx||null));
   localStorage.setItem('st_diag4',JSON.stringify(state.diagnosi||[]));
   localStorage.setItem('st_spost',JSON.stringify(state.spostamenti||[]));
+  try{ CocoIDB.schedule(); }catch(e){}
 }
 function load(){
   try{
@@ -2824,9 +2883,13 @@ function _dedupSeg(s){
 function _foZonaTxt(g){ if(g.ferie)return 'FERIE'; if(g.malattiaG)return 'MALATTIA'; if(g.voci&&g.voci.length)return [...new Set(g.voci.map(v=>_dedupSeg(v.zona)).filter(Boolean))].join(', '); return _dedupSeg(g.zona||''); }
 function _foSpan(g){ if(g.ferie)return ''; if(g.voci&&g.voci.length){const ins=g.voci.map(v=>v.inizio).filter(Boolean).sort();const outs=g.voci.map(v=>v.fine).filter(Boolean).sort();if(ins.length&&outs.length)return ins[0]+'–'+outs[outs.length-1];} return g.orario||''; }
 function _foCommOpts(selectedId){
+  const lblOf=c=>c.cliente?(c.cliente+' — '+(c.nome||'')):(c.nome||'cantiere');
+  const opt=c=>`<option value="${c.id}" ${c.id===selectedId?'selected':''}>${esc(lblOf(c))}</option>`;
   let o='<option value="">— cantiere —</option>';
-  (state.commesse||[]).forEach(c=>{ const lbl=c.cliente?(c.cliente+' — '+(c.nome||'')):(c.nome||'cantiere'); o+=`<option value="${c.id}" ${c.id===selectedId?'selected':''}>${esc(lbl)}</option>`; });
+  commesseAttive().forEach(c=>{ o+=opt(c); });
   o+='<option value="__new__">➕ Nuovo cantiere</option>';
+  const st=commesseStorico();
+  if(st.length){ o+=`<optgroup label="📁 Storico (completati)" style="color:#9aa0b4">`+st.map(c=>opt(c)).join('')+`</optgroup>`; }
   return o;
 }
 function foZonaNuovo(sel){
@@ -3354,6 +3417,7 @@ function fasiAttiveOggi(){
   const td=fmt(today());
   const out=[];
   state.commesse.forEach(c=>{
+    if(c.archiviata)return;
     (c.fasi||[]).forEach(f=>{
       if(!(f.tecnici||[]).includes(tid))return;
       if(f.stato==='completata')return;
@@ -3444,7 +3508,12 @@ function cf_renderPresenze(){
   // lista commesse del tecnico
   const tid=state.currentTecnicoId;
   const mine=state.commesse.filter(c=>(c.fasi||[]).some(f=>(f.tecnici||[]).includes(tid)));
-  const commLista=mine.length?mine:state.commesse;
+  const commListaBase=mine.length?mine:state.commesse;
+  const commLista=commListaBase.filter(c=>!c.archiviata);
+  const commArch=commListaBase.filter(c=>!!c.archiviata);
+  const _segOpts=(selId)=>'<option value="">— commessa —</option>'+
+    commLista.map(c=>`<option value="${c.id}"${c.id===selId?' selected':''}>${esc(c.nome)}</option>`).join('')+
+    (commArch.length?(`<optgroup label="📁 Storico" style="color:#9aa0b4">`+commArch.map(c=>`<option value="${c.id}"${c.id===selId?' selected':''}>${esc(c.nome)}</option>`).join('')+`</optgroup>`):'');
   const commOptions=commLista.map(c=>`<option value="${c.id}">${esc(c.nome)}</option>`).join('');
 
   let h='';
@@ -3464,8 +3533,7 @@ function cf_renderPresenze(){
     dd.segments.forEach((s,idx)=>{
       const dur=durataMinuti(s.oraInizio,s.oraFine);
       const warn=conflicts.has(s.id);
-      const optsHtml='<option value="">— commessa —</option>'+
-        commLista.map(c=>`<option value="${c.id}"${c.id===s.commessaId?' selected':''}>${esc(c.nome)}</option>`).join('');
+      const optsHtml=_segOpts(s.commessaId);
       h+=`<div class="seg" data-segid="${s.id}">
         <div class="seg-top">
           <div class="seg-tipo">
@@ -3665,9 +3733,13 @@ function buildRappCommesseSelect(selId){
   const sel=document.getElementById('mr-commessa');
   const tid=state.currentTecnicoId;
   const mine=state.commesse.filter(c=>(c.fasi||[]).some(f=>(f.tecnici||[]).includes(tid)));
-  let list=mine.length?mine.slice():state.commesse.slice();
-  if(selId && !list.some(c=>c.id===selId)){const extra=getCommessa(selId);if(extra)list.push(extra);}
-  sel.innerHTML='<option value="">— seleziona —</option>'+list.map(c=>`<option value="${c.id}"${c.id===selId?' selected':''}>${esc(c.nome)}</option>`).join('')+'<option value="__new__">➕ Nuovo cantiere (chiamata urgente)</option>';
+  let base=mine.length?mine.slice():state.commesse.slice();
+  if(selId && !base.some(c=>c.id===selId)){const extra=getCommessa(selId);if(extra)base.push(extra);}
+  const att=base.filter(c=>!c.archiviata), arch=base.filter(c=>!!c.archiviata);
+  const opt=c=>`<option value="${c.id}"${c.id===selId?' selected':''}>${esc(c.nome)}</option>`;
+  let h='<option value="">— seleziona —</option>'+att.map(opt).join('')+'<option value="__new__">➕ Nuovo cantiere (chiamata urgente)</option>';
+  if(arch.length){ h+=`<optgroup label="📁 Storico (completati)" style="color:#9aa0b4">`+arch.map(opt).join('')+`</optgroup>`; }
+  sel.innerHTML=h;
   sel.onchange=()=>{ if(sel.value==='__new__'){nuovoCantiereRapportino();return;} buildRappOreList(collectSquadra(),{},document.getElementById('mr-data').value); rappRenderChecklists(); };
 }
 function nuovoCantiereRapportino(){
@@ -5127,23 +5199,38 @@ function tbsCampo(){
   document.body.appendChild(_bfOv('tbs-campo-ov','🔧 Troubleshooting — scegli il lavoro', body));
   }catch(e){ try{ alert('Errore Troubleshooting: '+(e&&e.message||e)); }catch(_){} }
 }
-load();
-if(!state.tecnici||!state.tecnici.length){ state.tecnici=JSON.parse(JSON.stringify(ROSTER_INIZIALE)); save(); }
-if(!state.materiali||!state.materiali.length){ state.materiali=JSON.parse(JSON.stringify(MATERIALI_INIZIALI)); save(); }
-if(state.currentTecnicoId && !getTecnico(state.currentTecnicoId)){ state.currentTecnicoId=null; }
-state.startDate=addDays(today(),-3);
-initReportMonths();
-renderAll();
-state.tsDate=fmt(today());
-if(state.currentTecnicoId&&getTecnico(state.currentTecnicoId)){
-  showAppFused();
-}else{
-  document.querySelector('.app-header').style.display='none';
-  document.querySelector('.content').style.display='none';
-  document.querySelector('.bottom-nav').style.display='none';
-  mostraLogin();
-}
-setTimeout(()=>{try{maybeAutoBackupOnOpen();}catch(e){console.warn(e);}},800);
+(async function boot(){
+  // 1) Recupero durevole da IndexedDB se il localStorage è stato svuotato
+  try{
+    await CocoIDB.init();
+    const snap=await CocoIDB.get();
+    if(snap&&snap.ls){
+      let localHasData=false;
+      try{ localHasData=(JSON.parse(localStorage.getItem('st_t4')||'[]').length>0)||(JSON.parse(localStorage.getItem('st_c4')||'[]').length>0); }catch(e){}
+      if(!localHasData){ Object.keys(snap.ls).forEach(k=>{ try{ localStorage.setItem(k,snap.ls[k]); }catch(e){} }); }
+    }
+  }catch(e){}
+  // 2) Chiede al browser di NON sfrattare lo storage di questa origine
+  try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(e){}
+
+  load();
+  if(!state.tecnici||!state.tecnici.length){ state.tecnici=JSON.parse(JSON.stringify(ROSTER_INIZIALE)); save(); }
+  if(!state.materiali||!state.materiali.length){ state.materiali=JSON.parse(JSON.stringify(MATERIALI_INIZIALI)); save(); }
+  if(state.currentTecnicoId && !getTecnico(state.currentTecnicoId)){ state.currentTecnicoId=null; }
+  state.startDate=addDays(today(),-3);
+  initReportMonths();
+  renderAll();
+  state.tsDate=fmt(today());
+  if(state.currentTecnicoId&&getTecnico(state.currentTecnicoId)){
+    showAppFused();
+  }else{
+    document.querySelector('.app-header').style.display='none';
+    document.querySelector('.content').style.display='none';
+    document.querySelector('.bottom-nav').style.display='none';
+    mostraLogin();
+  }
+  setTimeout(()=>{try{maybeAutoBackupOnOpen();}catch(e){console.warn(e);}},800);
+})();
 
 // Tecnico (non ufficio): alla riapertura riparte sempre in modalità campo
 function _foRiapriCampo(){
@@ -5171,15 +5258,27 @@ function renderAll(){
 }
 
 // ── COMMESSE VIEW ──
+function setCommesseTab(t){ state.commesseTab=t; renderCommesse(); }
 function renderCommesse(){
   const el=document.getElementById('commesse-inner');
   const conflicts=getConflicts();
+  const uff=isUfficio(currentTec());
+  const tab=state.commesseTab||'atto';
+  const attive=commesseAttive(), storico=commesseStorico();
   let html='';
   if(conflicts.length)html+=`<div class="conflicts-banner">⚠️ ${conflicts.length} conflitto${conflicts.length>1?'i':''} di risorsa — <span style="text-decoration:underline;cursor:pointer" onclick="sendQuickAI('Analizza e risolvi i conflitti di risorse umane')">chiedi all'AI</span></div>`;
+  // Tab In atto / Storico
+  html+=`<div style="display:flex;gap:8px;margin-bottom:14px">
+    <button onclick="setCommesseTab('atto')" style="flex:1;padding:10px;border:none;border-radius:10px;font-weight:700;font-size:13px;font-family:inherit;${tab!=='storico'?'background:var(--accent2,#2563eb);color:#fff':'background:var(--surface2,#1c2030);color:var(--text2)'}">🟢 In atto (${attive.length})</button>
+    <button onclick="setCommesseTab('storico')" style="flex:1;padding:10px;border:none;border-radius:10px;font-weight:700;font-size:13px;font-family:inherit;${tab==='storico'?'background:#6b7280;color:#fff':'background:var(--surface2,#1c2030);color:var(--text2)'}">📁 Storico (${storico.length})</button>
+  </div>`;
+  const lista=(tab==='storico')?storico:attive;
   if(!state.commesse.length){el.innerHTML=html+`<div class="empty-state"><div class="empty-big">📋</div>Nessuna commessa.<br>Tocca <strong>＋</strong> per iniziare.</div>`;return;}
+  if(!lista.length){el.innerHTML=html+`<div class="empty-state" style="padding:30px 10px"><div class="empty-big">${tab==='storico'?'📁':'🟢'}</div>${tab==='storico'?'Nessun lavoro archiviato.':'Nessun lavoro in atto.'}</div>`;return;}
   const pC={alta:'var(--red)',media:'var(--yellow)',bassa:'var(--green)'};
-  state.commesse.forEach(c=>{
+  lista.forEach(c=>{
     const fasi=c.fasi||[],done=fasi.filter(f=>f.stato==='completata').length,pct=fasi.length?Math.round(done/fasi.length*100):0,exp=state.expanded[c.id];
+    const completata=commCompletata(c);
     html+=`<div class="card"><div class="card-hdr" onclick="toggleCommessa('${c.id}')">
       <span class="c-dot" style="background:${c.colore}"></span>
       <div class="c-info">
@@ -5196,9 +5295,12 @@ function renderCommesse(){
         <button class="ico-btn" onclick="tbsApriCommessa('${c.id}')" title="Troubleshooting / Diagnosi AI">🔧</button>
         <button class="ico-btn" onclick="openModalFase('${c.id}')">＋</button>
         <button class="ico-btn" onclick="editCommessa('${c.id}')">✎</button>
+        ${uff?(c.archiviata?`<button class="ico-btn" onclick="ripristinaCommessa('${c.id}')" title="Riporta in atto">♻️</button>`:`<button class="ico-btn" onclick="archiviaCommessa('${c.id}')" title="Archivia nello Storico"${completata?' style="background:rgba(34,197,94,.18)"':''}>📁</button>`):''}
       </div>
       <span class="tog${exp?' open':''}">▶</span>
     </div>`;
+    if(c.archiviata){ html+=`<div style="padding:0 14px 10px;font-size:11px;color:var(--text3);margin-top:-6px">📁 Archiviato${c.archData?(' il '+_bfData(c.archData)):''}${c.archAutore?(' · '+esc(c.archAutore)):''}</div>`; }
+    else if(uff&&completata){ html+=`<div style="padding:0 14px 10px;margin-top:-6px"><button onclick="archiviaCommessa('${c.id}')" style="width:100%;padding:9px;border:none;border-radius:9px;background:rgba(34,197,94,.14);color:#22c55e;font-weight:700;font-size:12px;font-family:inherit">✅ Lavoro completato — 📁 Archivia nello Storico</button></div>`; }
     if(exp){
       html+=`<div class="inner-list">`;
       if(!fasi.length)html+=`<div style="padding:12px 14px;font-size:12px;color:var(--text3)">Nessuna fase. Tocca ＋ per aggiungerne una.</div>`;
@@ -5696,7 +5798,9 @@ function onTsTipoChange(){
 }
 function buildTsCommesseSelect(selId){
   const sel=document.getElementById('mts-commessa');
-  sel.innerHTML='<option value="">&#8212; nessuna &#8212;</option>'+state.commesse.map(c=>`<option value="${c.id}"${c.id===selId?' selected':''}>${esc(c.nome)}</option>`).join('');
+  const opt=c=>`<option value="${c.id}"${c.id===selId?' selected':''}>${esc(c.nome)}</option>`;
+  const att=commesseAttive(), st=commesseStorico();
+  sel.innerHTML='<option value="">&#8212; nessuna &#8212;</option>'+att.map(opt).join('')+(st.length?(`<optgroup label="📁 Storico" style="color:#9aa0b4">`+st.map(opt).join('')+`</optgroup>`):'');
   document.getElementById('mts-fase-wrap').style.display=selId?'':'none';
   if(selId)buildTsFasiSelect(selId,'');
 }
@@ -5866,15 +5970,35 @@ function deleteCommessaCorrente(){
 }
 
 // ── CONFLICTS ──
+/* ── ARCHIVIO COMMESSE (Storico) ── */
+function commArchiviata(c){ return !!(c&&c.archiviata); }
+function commCompletata(c){ const f=(c&&c.fasi)||[]; return f.length>0 && f.every(x=>x.stato==='completata'); }
+function commesseAttive(){ return (state.commesse||[]).filter(c=>!c.archiviata); }
+function commesseStorico(){ return (state.commesse||[]).filter(c=>!!c.archiviata); }
+function archiviaCommessa(id){
+  if(!isUfficio(currentTec())){ alert('Solo l\u2019ufficio pu\u00f2 archiviare i lavori.'); return; }
+  const c=getCommessa(id); if(!c)return;
+  if(!commCompletata(c)){ if(!confirm('Il lavoro \u00ab'+(c.nome||'')+'\u00bb non ha tutte le fasi completate.\nArchiviarlo comunque nello Storico?'))return; }
+  else { if(!confirm('Archiviare \u00ab'+(c.nome||'')+'\u00bb nello Storico?'))return; }
+  const t=(typeof currentTec==='function')?currentTec():null;
+  c.archiviata=true; c.archData=fmt(today()); c.archAutore=(t&&t.nome)||'\u2014';
+  state.expanded[id]=false; save(); renderAll();
+}
+function ripristinaCommessa(id){
+  if(!isUfficio(currentTec())){ alert('Solo l\u2019ufficio pu\u00f2 ripristinare i lavori.'); return; }
+  const c=getCommessa(id); if(!c)return;
+  if(!confirm('Riportare \u00ab'+(c.nome||'')+'\u00bb tra i lavori in atto?'))return;
+  delete c.archiviata; delete c.archData; delete c.archAutore; save(); renderAll();
+}
 function getConflicts(){
   const rm={};
-  state.commesse.forEach(c=>(c.fasi||[]).forEach(f=>{
+  state.commesse.forEach(c=>{ if(c.archiviata)return; (c.fasi||[]).forEach(f=>{
     (f.tecnici||[]).forEach(tid=>{
       if(f.stato==='completata')return;
       if(!rm[tid])rm[tid]=[];
       rm[tid].push({...f,_c:c});
     });
-  }));
+  }); });
   const out=[];
   const _gg=s=>{ if(!s)return '?'; const p=String(s).split('-'); return p.length===3?(p[2]+'/'+p[1]):s; }; // YYYY-MM-DD -> DD/MM
   Object.entries(rm).forEach(([tid,fasi])=>{
@@ -6257,6 +6381,7 @@ function buildAgendaEvents(){
   const tStr=fmt(todayD);
 
   state.commesse.forEach(c=>{
+    if(c.archiviata)return;
     (c.fasi||[]).forEach(f=>{
       if(f.stato==='completata')return;
       const tecNomi=(f.tecnici||[]).map(tid=>{const t=getTecnico(tid);return t?t.nome.split(' ')[0]:null;}).filter(Boolean);
@@ -6598,15 +6723,28 @@ function toggleEventoDone(id){
 // ════════════════════════════════════════════════════════════════════
 // ── BACKUP ──
 // ════════════════════════════════════════════════════════════════════
+// Rimuove le coordinate GPS (lat/lng/acc) dai check-in: nel backup resta solo
+// la presenza (timestamp + cantiere), mai la posizione esatta — scelta privacy.
+function _sanitizeCheckin(ck){
+  const strip=p=>(p&&typeof p==='object')?{ts:p.ts}:p;
+  const o=Object.assign({},ck);
+  if(o.in)o.in=strip(o.in);
+  if(o.out)o.out=strip(o.out);
+  return o;
+}
 function buildBackupPayload(){
   return {
-    format:'sietel-commesse-v4',
+    format:'sietel-commesse-v5',
     exportedAt:new Date().toISOString(),
     device:navigator.userAgent.includes('iPad')?'iPad':navigator.userAgent.includes('iPhone')?'iPhone':navigator.userAgent.includes('Android')?'Android':'Web',
+    aziendaNome:state.aziendaNome||'Co.Co.',
     counts:{
       commesse:state.commesse.length,tecnici:state.tecnici.length,
       materiali:state.materiali.length,eventi:state.eventi.length,
       timesheets:state.timesheets.length,rapportini:state.rapportini.length,
+      movimenti:(state.movimenti||[]).length,
+      foglioOre:Object.keys(state.foglioOre||{}).length,
+      computi:(state.computi||[]).length,
       fasi:state.commesse.reduce((a,c)=>a+((c.fasi||[]).length),0),
     },
     data:{
@@ -6616,6 +6754,12 @@ function buildBackupPayload(){
       diagnosi:state.diagnosi||[],
       spostamenti:state.spostamenti||[],
       promemoria:state.promemoria||[],
+      computi:state.computi||[],
+      briefings:state.briefings||[],
+      aiRisposte:state.aiRisposte||[],
+      movimenti:state.movimenti||[],
+      foglioOre:state.foglioOre||{},
+      checkins:(state.checkins||[]).map(_sanitizeCheckin),
     },
   };
 }
@@ -6651,7 +6795,9 @@ function maybeAutoBackupOnOpen(){
   if(lStr===tStr)return;
   try{downloadBackup('auto');}catch(e){console.warn(e);}
 }
-function pickImportFile(){document.getElementById('bk-file-input').click();}
+function pickImportFile(){ _importFromLogin=false; document.getElementById('bk-file-input').click(); }
+let _importFromLogin=false;
+function loginCaricaBackup(){ _importFromLogin=true; document.getElementById('bk-file-input').click(); }
 function onImportFileSelected(ev){
   const f=ev.target.files&&ev.target.files[0];
   if(!f)return;
@@ -6669,10 +6815,12 @@ function applyImport(payload,filename){
   if(payload.format&&payload.data)d=payload.data;
   else if(payload.commesse||payload.tecnici)d=payload;
   else{alert('Struttura JSON non riconosciuta');return;}
+  const _mov=(d.movimenti||[]).length, _fo=Object.keys(d.foglioOre||{}).length;
   const cnts={commesse:(d.commesse||[]).length,tecnici:(d.tecnici||[]).length,materiali:(d.materiali||[]).length,timesheets:(d.timesheets||[]).length,rapportini:(d.rapportini||[]).length,eventi:(d.eventi||[]).length};
   const cur={commesse:state.commesse.length,tecnici:state.tecnici.length,materiali:state.materiali.length,timesheets:state.timesheets.length,rapportini:state.rapportini.length,eventi:state.eventi.length};
   const expDate=payload.exportedAt?new Date(payload.exportedAt).toLocaleString('it-IT'):'?';
-  const msg=`IMPORTA BACKUP\nFile: ${filename||''}\nEsportato: ${expDate}\n\nNel file:\n· ${cnts.commesse} commesse · ${cnts.tecnici} tecnici · ${cnts.materiali} materiali\n· ${cnts.timesheets} voci ore · ${cnts.rapportini} rapportini · ${cnts.eventi} eventi\n\nAttuali:\n· ${cur.commesse} commesse · ${cur.tecnici} tecnici · ${cur.materiali} materiali\n· ${cur.timesheets} voci ore · ${cur.rapportini} rapportini · ${cur.eventi} eventi\n\n⚠️ Verranno SOSTITUITI. Procedere?`;
+  const extra=(_mov||_fo)?`\n· ${_mov} movimenti magazzino · ${_fo} mesi presenze`:'';
+  const msg=`IMPORTA BACKUP\nFile: ${filename||''}\nEsportato: ${expDate}\n\nNel file:\n· ${cnts.commesse} commesse · ${cnts.tecnici} tecnici · ${cnts.materiali} materiali\n· ${cnts.timesheets} voci ore · ${cnts.rapportini} rapportini · ${cnts.eventi} eventi${extra}\n\nAttuali:\n· ${cur.commesse} commesse · ${cur.tecnici} tecnici · ${cur.materiali} materiali\n· ${cur.timesheets} voci ore · ${cur.rapportini} rapportini · ${cur.eventi} eventi\n\n⚠️ Verranno SOSTITUITI. Procedere?`;
   if(!confirm(msg))return;
   try{localStorage.setItem('st_safety_'+Date.now(),JSON.stringify(buildBackupPayload()));}catch(e){}
   if(d.commesse)state.commesse=d.commesse;
@@ -6686,9 +6834,23 @@ function applyImport(payload,filename){
   if(d.diagnosi)state.diagnosi=d.diagnosi;
   if(d.spostamenti)state.spostamenti=d.spostamenti;
   if(d.promemoria)state.promemoria=d.promemoria;
+  if(d.computi)state.computi=d.computi;
+  if(d.briefings)state.briefings=d.briefings;
+  if(d.aiRisposte)state.aiRisposte=d.aiRisposte;
+  if(d.movimenti)state.movimenti=d.movimenti;
+  if(d.foglioOre)state.foglioOre=d.foglioOre;
+  if(d.checkins)state.checkins=d.checkins;
+  if(payload.aziendaNome)state.aziendaNome=payload.aziendaNome;
   state.backup.lastImport=new Date().toISOString();
   state.backup.history.unshift({at:state.backup.lastImport,kind:'import',size:JSON.stringify(payload).length,filename:filename||''});
   save();renderAll();
+  if(_importFromLogin){
+    _importFromLogin=false;
+    try{ buildLoginSelect(); }catch(e){}
+    const n=(d.tecnici||[]).length;
+    alert('✅ Backup caricato: '+n+' utenti.\nSeleziona il tuo nome per accedere.');
+    return;
+  }
   alert('✅ Importazione completata');
 }
 function copyBackupClipboard(){
