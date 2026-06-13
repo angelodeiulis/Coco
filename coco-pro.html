@@ -1264,7 +1264,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='112';
+const APP_VERSION='113';
 const TS_COLORS={lavoro:'#22c55e',viaggio:'#4f9cf9',pausa:'#94a3b8'};
 const TS_ICONS={lavoro:'&#128296;',viaggio:'&#128663;',pausa:'&#9749;'};
 const parseDate=s=>new Date(s+'T00:00:00');
@@ -1329,6 +1329,139 @@ const CocoIDB=(function(){
   return { init, schedule, write, get, LS_KEYS };
 })();
 
+/* ── CocoSync · sincronizzazione cloud opzionale via Firebase ──
+   OPT-IN: senza configurazione non fa NULLA (app invariata).
+   - Auth: email/password per persona (sessione mantenuta da Firebase).
+   - Storage: un solo documento Firestore aziende/{azienda} con lo snapshot
+     di buildBackupPayload() (già SENZA chiave Gemini e SENZA coordinate GPS).
+   - Pull all'avvio/login, push (debounced) a ogni save(). Ultima scrittura vince.
+   Config e credenziali restano in locale, NON entrano nel backup. */
+const CocoSync=(function(){
+  const SDK='https://www.gstatic.com/firebasejs/10.12.0/';
+  const K_CFG='coco_fb_config', K_AZ='coco_fb_azienda', K_EMAIL='coco_fb_email', K_AT='coco_fb_lastat';
+  const S={ ready:false, loading:false, user:null, status:'off', msg:'', applying:false, lastAt:0, timer:null };
+
+  function cfg(){ try{ return JSON.parse(localStorage.getItem(K_CFG)||'null'); }catch(e){ return null; } }
+  function azienda(){ return (localStorage.getItem(K_AZ)||'sietel').trim()||'sietel'; }
+  function isConfigured(){ const c=cfg(); return !!(c&&c.apiKey&&c.projectId); }
+  function isOn(){ return isConfigured(); }
+  function _set(st,msg){ S.status=st; if(msg!=null)S.msg=msg; try{ if(typeof renderBackup==='function'&&document.getElementById('backup-inner')) renderBackup(); }catch(e){} }
+
+  function _loadSDK(){
+    if(window.firebase&&firebase.firestore) return Promise.resolve();
+    if(S._sdkP) return S._sdkP;
+    const add=src=>new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('SDK non caricato: '+src)); document.head.appendChild(s); });
+    S._sdkP=add(SDK+'firebase-app-compat.js')
+      .then(()=>Promise.all([add(SDK+'firebase-auth-compat.js'),add(SDK+'firebase-firestore-compat.js')]));
+    return S._sdkP;
+  }
+
+  async function init(){
+    if(!isConfigured()){ S.status='off'; return; }
+    if(S.ready) return;
+    if(S.loading) return; S.loading=true;
+    _set('connecting','Connessione…');
+    try{
+      await _loadSDK();
+      if(!firebase.apps.length) firebase.initializeApp(cfg());
+      try{ await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL); }catch(e){}
+      S.ready=true; S.loading=false;
+      S.lastAt=parseInt(localStorage.getItem(K_AT)||'0',10)||0;
+      firebase.auth().onAuthStateChanged(u=>{
+        S.user=u||null;
+        if(u){ _set('idle','Connesso: '+(u.email||'')); pull().then(()=>{ /* primo allineamento */ }); }
+        else { _set('signedout','Non autenticato'); }
+      });
+    }catch(e){ S.loading=false; _set('error',e.message||'Errore SDK'); }
+  }
+
+  async function login(email,pw){
+    await init();
+    if(!S.ready){ alert('Firebase non pronto: '+(S.msg||'')); return; }
+    _set('connecting','Accesso…');
+    try{
+      await firebase.auth().signInWithEmailAndPassword(email,pw);
+      localStorage.setItem(K_EMAIL,email);
+      // onAuthStateChanged farà il pull
+    }catch(e){ _set('error', _authErr(e)); alert('Accesso fallito: '+_authErr(e)); }
+  }
+  function _authErr(e){
+    const c=(e&&e.code)||''; 
+    if(c.includes('wrong-password')||c.includes('invalid-credential'))return 'email o password errati';
+    if(c.includes('user-not-found'))return 'utente inesistente (va creato in Firebase)';
+    if(c.includes('network'))return 'rete assente';
+    if(c.includes('too-many'))return 'troppi tentativi, riprova più tardi';
+    return (e&&e.message)||'errore';
+  }
+  function logout(){ try{ firebase.auth().signOut(); }catch(e){} S.user=null; _set('signedout','Disconnesso'); }
+
+  function _db(){ return firebase.firestore(); }
+  function _ref(){ return _db().collection('aziende').doc(azienda()); }
+
+  async function pull(){
+    if(!S.ready||!S.user) return;
+    _set('syncing','Scarico dati…');
+    try{
+      const doc=await _ref().get();
+      if(!doc.exists){ _set('idle','Nessun dato in cloud ancora'); return; }
+      const data=doc.data()||{};
+      const at=data.updatedAt||0;
+      if(at>S.lastAt && data.payload){
+        applyCloud(data.payload);
+        S.lastAt=at; localStorage.setItem(K_AT,String(at));
+        _set('idle','Aggiornato da '+(data.updatedBy||'cloud'));
+      } else {
+        _set('idle','Già allineato');
+      }
+    }catch(e){ _set('error', _fsErr(e)); }
+  }
+
+  async function push(){
+    if(!S.ready||!S.user) return;
+    _set('syncing','Invio dati…');
+    try{
+      const t=(typeof currentTec==='function')?currentTec():null;
+      const at=Date.now();
+      await _ref().set({ payload:buildBackupPayload(), updatedAt:at, updatedBy:(t&&t.nome)||(S.user.email||'?') });
+      S.lastAt=at; localStorage.setItem(K_AT,String(at));
+      _set('idle','Salvato in cloud');
+    }catch(e){ _set('error', _fsErr(e)); }
+  }
+  function _fsErr(e){
+    const c=(e&&e.code)||'';
+    if(c.includes('permission'))return 'permesso negato (controlla le regole Firestore)';
+    if(c.includes('unavailable')||c.includes('network'))return 'offline: riprovo al prossimo salvataggio';
+    return (e&&e.message)||'errore';
+  }
+
+  // chiamata da save(): push con debounce, mai durante un apply (anti-loop)
+  function schedulePush(){
+    if(!isConfigured()||!S.ready||!S.user||S.applying) return;
+    if(S.timer) clearTimeout(S.timer);
+    S.timer=setTimeout(()=>{ S.timer=null; push().catch(()=>{}); }, 1500);
+  }
+
+  function applyCloud(payload){
+    S.applying=true;
+    try{ applyCloudPayload(payload); }
+    finally{ S.applying=false; }
+  }
+
+  function statusInfo(){ return { on:isConfigured(), ready:S.ready, user:S.user?(S.user.email||''):'', status:S.status, msg:S.msg, lastAt:S.lastAt, azienda:azienda() }; }
+  function saveConfig(jsonText,az){
+    let c; try{ c=JSON.parse(jsonText); }catch(e){ alert('Config non valida (deve essere il JSON di Firebase).'); return false; }
+    if(!c.apiKey||!c.projectId){ alert('Config incompleta: mancano apiKey/projectId.'); return false; }
+    localStorage.setItem(K_CFG,JSON.stringify(c));
+    if(az!=null) localStorage.setItem(K_AZ,(az||'sietel').trim()||'sietel');
+    S.ready=false; S._sdkP=null;
+    init();
+    return true;
+  }
+  function forget(){ localStorage.removeItem(K_CFG); localStorage.removeItem(K_AT); S.ready=false; S.user=null; S.status='off'; }
+
+  return { init, login, logout, pull, push, schedulePush, statusInfo, saveConfig, forget, isOn, lastEmail:()=>localStorage.getItem(K_EMAIL)||'' };
+})();
+
 function save(){
   localStorage.setItem('st_c4',JSON.stringify(state.commesse));
   localStorage.setItem('st_e4',JSON.stringify(state.expanded));
@@ -1352,6 +1485,7 @@ function save(){
   localStorage.setItem('st_diag4',JSON.stringify(state.diagnosi||[]));
   localStorage.setItem('st_spost',JSON.stringify(state.spostamenti||[]));
   try{ CocoIDB.schedule(); }catch(e){}
+  try{ CocoSync.schedulePush(); }catch(e){}
 }
 function load(){
   try{
@@ -5230,6 +5364,7 @@ function tbsCampo(){
     mostraLogin();
   }
   setTimeout(()=>{try{maybeAutoBackupOnOpen();}catch(e){console.warn(e);}},800);
+  setTimeout(()=>{try{ if(CocoSync.isOn()) CocoSync.init(); }catch(e){console.warn(e);}},400);
 })();
 
 // Tecnico (non ufficio): alla riapertura riparte sempre in modalità campo
@@ -6853,6 +6988,32 @@ function applyImport(payload,filename){
   }
   alert('✅ Importazione completata');
 }
+function applyCloudPayload(payload){
+  if(!payload||typeof payload!=='object')return;
+  let d; if(payload.format&&payload.data)d=payload.data; else if(payload.commesse||payload.tecnici)d=payload; else return;
+  if(d.commesse)state.commesse=d.commesse;
+  if(d.tecnici)state.tecnici=d.tecnici;
+  if(d.materiali)state.materiali=d.materiali;
+  if(d.timesheets)state.timesheets=d.timesheets;
+  if(d.eventi)state.eventi=d.eventi;
+  if(d.rapportini)state.rapportini=d.rapportini;
+  if(d.expanded)state.expanded=d.expanded;
+  if(d.agendaDismissed)state.agendaDismissed=d.agendaDismissed;
+  if(d.diagnosi)state.diagnosi=d.diagnosi;
+  if(d.spostamenti)state.spostamenti=d.spostamenti;
+  if(d.promemoria)state.promemoria=d.promemoria;
+  if(d.computi)state.computi=d.computi;
+  if(d.briefings)state.briefings=d.briefings;
+  if(d.aiRisposte)state.aiRisposte=d.aiRisposte;
+  if(d.movimenti)state.movimenti=d.movimenti;
+  if(d.foglioOre)state.foglioOre=d.foglioOre;
+  if(d.checkins)state.checkins=d.checkins;
+  if(payload.aziendaNome)state.aziendaNome=payload.aziendaNome;
+  if(state.currentTecnicoId && !getTecnico(state.currentTecnicoId)) state.currentTecnicoId=state.currentTecnicoId; // mantiene login locale
+  save();
+  try{ renderAll(); }catch(e){}
+  try{ if(typeof buildLoginSelect==='function' && !(state.currentTecnicoId&&getTecnico(state.currentTecnicoId))) buildLoginSelect(); }catch(e){}
+}
 function copyBackupClipboard(){
   const json=JSON.stringify(buildBackupPayload(),null,2);
   if(navigator.clipboard&&navigator.clipboard.writeText){
@@ -6867,6 +7028,40 @@ function fmtBackupWhen(iso){
   return d.toLocaleDateString('it-IT',{day:'2-digit',month:'short'});
 }
 function fmtBackupSize(n){if(n<1024)return n+' B';if(n<1048576)return (n/1024).toFixed(1)+' KB';return (n/1048576).toFixed(2)+' MB';}
+
+function _syncCardHTML(){
+  const i=CocoSync.statusInfo();
+  const dot=(c)=>`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};margin-right:6px"></span>`;
+  let body='';
+  if(!i.on){
+    body=`<div class="bk-sub">Sincronizza i dati tra ufficio e tecnici tramite Firebase (Google). Gratis, opzionale. La chiave AI e le posizioni GPS non vengono inviate.</div>
+    <textarea id="fb-cfg" placeholder='Incolla qui la config Firebase (oggetto JSON con apiKey, projectId, ...)' style="width:100%;box-sizing:border-box;min-height:110px;background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:10px;font-family:var(--mono,monospace);font-size:12px"></textarea>
+    <input id="fb-az" placeholder="Nome azienda (es. sietel)" value="sietel" style="width:100%;box-sizing:border-box;margin-top:8px;background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:10px;font-size:14px">
+    <button class="bk-btn primary" style="margin-top:10px" onclick="fbSaveConfig()"><span class="bk-btn-ico">☁️</span><div class="bk-btn-body"><div class="bk-btn-title">Attiva sincronizzazione</div><div class="bk-btn-sub">Salva la configurazione</div></div></button>`;
+  } else if(!i.user){
+    const col=i.status==='error'?'#ef4444':(i.status==='connecting'?'#f59e0b':'#64748b');
+    body=`<div class="bk-sub">${dot(col)}${esc(i.msg||'Non autenticato')}</div>
+    <input id="fb-email" type="email" placeholder="Email" value="${esc(CocoSync.lastEmail())}" autocomplete="username" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:11px;font-size:15px">
+    <input id="fb-pw" type="password" placeholder="Password" autocomplete="current-password" style="width:100%;box-sizing:border-box;margin-top:8px;background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:11px;font-size:15px">
+    <button class="bk-btn primary" style="margin-top:10px" onclick="fbLogin()"><span class="bk-btn-ico">🔑</span><div class="bk-btn-body"><div class="bk-btn-title">Accedi</div><div class="bk-btn-sub">Azienda: ${esc(i.azienda)}</div></div></button>
+    <button class="bk-btn" style="margin-top:8px" onclick="fbForget()"><span class="bk-btn-ico">⚙️</span><div class="bk-btn-body"><div class="bk-btn-title">Cambia configurazione</div></div></button>`;
+  } else {
+    const col=i.status==='error'?'#ef4444':(i.status==='syncing'?'#f59e0b':'#22c55e');
+    const last=i.lastAt?fmtBackupWhen(new Date(i.lastAt).toISOString()):'mai';
+    body=`<div class="bk-sub">${dot(col)}${esc(i.msg||'Connesso')} · <b>${esc(i.user)}</b></div>
+    <div class="bk-sub" style="margin-top:2px">Ultima sincro: ${last} · azienda: ${esc(i.azienda)}</div>
+    <div class="bk-actions">
+      <button class="bk-btn primary" onclick="fbSyncNow()"><span class="bk-btn-ico">🔄</span><div class="bk-btn-body"><div class="bk-btn-title">Sincronizza ora</div><div class="bk-btn-sub">Scarica e poi invia</div></div></button>
+      <button class="bk-btn" onclick="fbLogout()"><span class="bk-btn-ico">🚪</span><div class="bk-btn-body"><div class="bk-btn-title">Esci</div></div></button>
+    </div>`;
+  }
+  return `<div class="bk-card" style="border-color:rgba(79,156,249,.3)"><h3>☁️ Sincronizzazione cloud</h3>${body}</div>`;
+}
+function fbSaveConfig(){ const j=document.getElementById('fb-cfg').value.trim(); const az=document.getElementById('fb-az').value; if(CocoSync.saveConfig(j,az)) renderBackup(); }
+function fbLogin(){ const e=(document.getElementById('fb-email').value||'').trim(); const p=document.getElementById('fb-pw').value||''; if(!e||!p){alert('Inserisci email e password.');return;} CocoSync.login(e,p); }
+function fbLogout(){ CocoSync.logout(); }
+function fbForget(){ if(confirm('Rimuovere la configurazione Firebase da questo dispositivo?')){ CocoSync.forget(); renderBackup(); } }
+async function fbSyncNow(){ await CocoSync.pull(); await CocoSync.push(); }
 
 function renderBackup(){
   const el=document.getElementById('backup-inner');
@@ -6884,6 +7079,7 @@ function renderBackup(){
       <div class="bk-stat"><div class="bk-stat-lbl">Dimensione</div><div class="bk-stat-val">${fmtBackupSize(sz)}</div></div>
     </div>
   </div>`;
+  h+=_syncCardHTML();
   h+=`<div class="bk-card">
     <h3>⬇️ Esporta JSON</h3>
     <div class="bk-sub">Salva un backup completo. Da spostare in ufficio via USB, mail o cloud.</div>
