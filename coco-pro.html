@@ -807,6 +807,7 @@ textarea{resize:vertical;min-height:60px;}
   <button class="hdr-menu-item" onclick="ripristinaElenco()"><span class="hmi-ico">👥</span>Carica elenco persone</button>
   <button class="hdr-menu-item" onclick="closeHdrMenu();apriMagazzino()"><span class="hmi-ico">🏬</span>Magazzino</button>
   <button class="hdr-menu-item" onclick="closeHdrMenu();ordiniInviati()"><span class="hmi-ico">🛒</span>Ordini materiali</button>
+  <button class="hdr-menu-item" onclick="closeHdrMenu();apriSync()"><span class="hmi-ico">☁️</span>Sincronizzazione cloud</button>
   <button class="hdr-menu-item" onclick="hdrMenuGo('backup')"><span class="hmi-ico">💾</span>Backup &amp; dati</button>
   <div class="hdr-menu-sep"></div>
   <button class="hdr-menu-item" onclick="closeHdrMenu();logout()"><span class="hmi-ico">🚪</span>Esci / Cambia utente</button>
@@ -1069,6 +1070,7 @@ textarea{resize:vertical;min-height:60px;}
       </div>
       <div class="ff"><label>PIN accesso campo (4-8 cifre)</label><input type="text" inputmode="numeric" id="mt-pin" maxlength="8" placeholder="Default: 0000"><div style="font-size:10px;color:var(--text3);margin-top:3px">Il tecnico usa questo PIN per accedere al terminale di cantiere. Può cambiarlo dal suo dispositivo. Ruolo "Ufficio" = accesso completo gestione.</div></div>
       <div class="ff"><label>Note</label><textarea id="mt-note" placeholder="Specializzazioni, patenti..."></textarea></div>
+      <div class="ff" id="mt-cloud-wrap" style="display:none"><label style="display:flex;align-items:center;gap:10px;cursor:pointer"><input type="checkbox" id="mt-cloudwrite" style="width:18px;height:18px"><span>☁️ Può sincronizzare nel cloud (inviare modifiche)</span></label><div style="font-size:10px;color:var(--text3);margin-top:3px">Se spento, questo tecnico <b>riceve</b> soltanto i dati dal cloud. L'ufficio scrive sempre.</div></div>
     </div>
     <div class="modal-footer"><button class="btn-save" onclick="saveTecnico()">Salva Tecnico</button></div>
   </div>
@@ -1264,7 +1266,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='113';
+const APP_VERSION='114';
 const TS_COLORS={lavoro:'#22c55e',viaggio:'#4f9cf9',pausa:'#94a3b8'};
 const TS_ICONS={lavoro:'&#128296;',viaggio:'&#128663;',pausa:'&#9749;'};
 const parseDate=s=>new Date(s+'T00:00:00');
@@ -1345,7 +1347,7 @@ const CocoSync=(function(){
   function azienda(){ return (localStorage.getItem(K_AZ)||'sietel').trim()||'sietel'; }
   function isConfigured(){ const c=cfg(); return !!(c&&c.apiKey&&c.projectId); }
   function isOn(){ return isConfigured(); }
-  function _set(st,msg){ S.status=st; if(msg!=null)S.msg=msg; try{ if(typeof renderBackup==='function'&&document.getElementById('backup-inner')) renderBackup(); }catch(e){} }
+  function _set(st,msg){ S.status=st; if(msg!=null)S.msg=msg; try{ if(typeof renderBackup==='function'&&document.getElementById('backup-inner')) renderBackup(); }catch(e){} try{ if(typeof renderSyncPanel==='function'&&document.getElementById('sync-inner')) renderSyncPanel(); }catch(e){} }
 
   function _loadSDK(){
     if(window.firebase&&firebase.firestore) return Promise.resolve();
@@ -1418,6 +1420,7 @@ const CocoSync=(function(){
 
   async function push(){
     if(!S.ready||!S.user) return;
+    if(!canWrite()){ _set('idle','Questo dispositivo riceve soltanto'); return; }
     _set('syncing','Invio dati…');
     try{
       const t=(typeof currentTec==='function')?currentTec():null;
@@ -1434,9 +1437,16 @@ const CocoSync=(function(){
     return (e&&e.message)||'errore';
   }
 
-  // chiamata da save(): push con debounce, mai durante un apply (anti-loop)
+  // Chi può SCRIVERE nel cloud: ufficio, oppure tecnico autorizzato dall'ufficio.
+  function canWrite(){
+    const t=(typeof currentTec==='function')?currentTec():null;
+    if(!t) return false;
+    if(typeof isUfficio==='function' && isUfficio(t)) return true;
+    return !!t.cloudWrite;
+  }
+  // chiamata da save(): push con debounce, mai durante un apply (anti-loop), solo se autorizzato
   function schedulePush(){
-    if(!isConfigured()||!S.ready||!S.user||S.applying) return;
+    if(!isConfigured()||!S.ready||!S.user||S.applying||!canWrite()) return;
     if(S.timer) clearTimeout(S.timer);
     S.timer=setTimeout(()=>{ S.timer=null; push().catch(()=>{}); }, 1500);
   }
@@ -1459,7 +1469,7 @@ const CocoSync=(function(){
   }
   function forget(){ localStorage.removeItem(K_CFG); localStorage.removeItem(K_AT); S.ready=false; S.user=null; S.status='off'; }
 
-  return { init, login, logout, pull, push, schedulePush, statusInfo, saveConfig, forget, isOn, lastEmail:()=>localStorage.getItem(K_EMAIL)||'' };
+  return { init, login, logout, pull, push, schedulePush, statusInfo, saveConfig, forget, isOn, canWrite, lastEmail:()=>localStorage.getItem(K_EMAIL)||'' };
 })();
 
 function save(){
@@ -6410,6 +6420,8 @@ function openModalTecnico(){
   document.getElementById('mt-title').textContent='Nuovo Tecnico';
   ['mt-nome','mt-azienda','mt-tel','mt-email','mt-note','mt-pin'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('mt-ruolo').value='Tecnico';
+  document.getElementById('mt-cloudwrite').checked=false;
+  document.getElementById('mt-cloud-wrap').style.display=(typeof isUfficio==='function'&&isUfficio(currentTec()))?'block':'none';
   document.getElementById('modal-tecnico').classList.add('open');
 }
 function editTecnico(id){
@@ -6423,6 +6435,8 @@ function editTecnico(id){
   document.getElementById('mt-email').value=t.email||'';
   document.getElementById('mt-note').value=t.note||'';
   document.getElementById('mt-pin').value=t.pin||'';
+  document.getElementById('mt-cloudwrite').checked=!!t.cloudWrite;
+  document.getElementById('mt-cloud-wrap').style.display=(typeof isUfficio==='function'&&isUfficio(currentTec()))?'block':'none';
   document.getElementById('modal-tecnico').classList.add('open');
 }
 function saveTecnico(){
@@ -6431,6 +6445,7 @@ function saveTecnico(){
   if(pin&&!/^\d{4,8}$/.test(pin))return alert('Il PIN deve avere da 4 a 8 cifre.');
   if(!pin)pin=DEFAULT_PIN;
   const data={nome,ruolo:document.getElementById('mt-ruolo').value,azienda:document.getElementById('mt-azienda').value.trim(),tel:document.getElementById('mt-tel').value.trim(),email:document.getElementById('mt-email').value.trim(),note:document.getElementById('mt-note').value.trim(),pin};
+  if(typeof isUfficio==='function'&&isUfficio(currentTec())){ data.cloudWrite=document.getElementById('mt-cloudwrite').checked; }
   if(state.editingTecnicoId){Object.assign(getTecnico(state.editingTecnicoId),data);}
   else{state.tecnici.push({id:'t'+Date.now(),...data});}
   closeModal('modal-tecnico');save();renderAll();
@@ -7062,6 +7077,63 @@ function fbLogin(){ const e=(document.getElementById('fb-email').value||'').trim
 function fbLogout(){ CocoSync.logout(); }
 function fbForget(){ if(confirm('Rimuovere la configurazione Firebase da questo dispositivo?')){ CocoSync.forget(); renderBackup(); } }
 async function fbSyncNow(){ await CocoSync.pull(); await CocoSync.push(); }
+
+function apriSync(){
+  const old=document.getElementById('sync-ov'); if(old)old.remove();
+  const ov=document.createElement('div'); ov.id='sync-ov';
+  ov.style.cssText='position:fixed;inset:0;z-index:340;background:rgba(0,0,0,.8);display:flex;align-items:flex-end';
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  ov.innerHTML='<div style="background:var(--surface,#141720);width:100%;border-radius:18px 18px 0 0;max-height:92vh;display:flex;flex-direction:column;color:var(--text,#fff);font-family:var(--sans,system-ui)">'+
+    '<div style="display:flex;align-items:center;gap:10px;padding:14px 14px 4px"><div style="flex:1;font-weight:700;font-size:16px">☁️ Sincronizzazione cloud</div>'+
+    '<button onclick="document.getElementById(\'sync-ov\').remove()" style="width:34px;height:34px;border-radius:8px;border:none;background:var(--surface2,#1c2030);color:#fff;font-size:20px">×</button></div>'+
+    '<div id="sync-inner" style="overflow-y:auto;padding:6px 14px calc(20px + env(safe-area-inset-bottom,0px))"></div></div>';
+  document.body.appendChild(ov);
+  renderSyncPanel();
+  try{ if(CocoSync.isOn()) CocoSync.init(); }catch(e){}
+}
+function renderSyncPanel(){
+  const el=document.getElementById('sync-inner'); if(!el)return;
+  const i=CocoSync.statusInfo();
+  const canW=(typeof CocoSync.canWrite==='function')?CocoSync.canWrite():false;
+  const t=(typeof currentTec==='function')?currentTec():null;
+  const uff=(typeof isUfficio==='function')?isUfficio(t):false;
+  const dot=c=>`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};margin-right:6px"></span>`;
+  let h='';
+  if(!i.on){
+    h=`<div class="bk-sub">Sincronizza i dati tra ufficio e tecnici tramite Firebase. La chiave AI e le posizioni GPS non vengono inviate.</div>
+    <textarea id="fb-cfg" placeholder='Incolla qui la config Firebase (JSON con apiKey, projectId, ...)' style="width:100%;box-sizing:border-box;min-height:110px;background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:10px;font-family:var(--mono,monospace);font-size:12px"></textarea>
+    <input id="fb-az" placeholder="Nome azienda (es. sietel)" value="sietel" style="width:100%;box-sizing:border-box;margin-top:8px;background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:10px;font-size:14px">
+    <button class="bk-btn primary" style="margin-top:10px" onclick="fbSaveConfig2()"><span class="bk-btn-ico">☁️</span><div class="bk-btn-body"><div class="bk-btn-title">Attiva su questo dispositivo</div></div></button>`;
+  } else if(!i.user){
+    const col=i.status==='error'?'#ef4444':(i.status==='connecting'?'#f59e0b':'#64748b');
+    h=`<div class="bk-sub">${dot(col)}${esc(i.msg||'Non autenticato')}</div>
+    <input id="fb-email" type="email" placeholder="Email" value="${esc(CocoSync.lastEmail())}" autocomplete="username" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:11px;font-size:15px">
+    <input id="fb-pw" type="password" placeholder="Password" autocomplete="current-password" style="width:100%;box-sizing:border-box;margin-top:8px;background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:11px;font-size:15px">
+    <button class="bk-btn primary" style="margin-top:10px" onclick="fbLogin2()"><span class="bk-btn-ico">🔑</span><div class="bk-btn-body"><div class="bk-btn-title">Accedi</div><div class="bk-btn-sub">Azienda: ${esc(i.azienda)}</div></div></button>
+    ${uff?`<button class="bk-btn" style="margin-top:8px" onclick="fbForget2()"><span class="bk-btn-ico">⚙️</span><div class="bk-btn-body"><div class="bk-btn-title">Cambia configurazione</div></div></button>`:''}`;
+  } else {
+    const col=i.status==='error'?'#ef4444':(i.status==='syncing'?'#f59e0b':'#22c55e');
+    const last=i.lastAt?fmtBackupWhen(new Date(i.lastAt).toISOString()):'mai';
+    const ruolo = canW ? (uff?'Ufficio · invia e riceve':'Autorizzato · invia e riceve') : 'Sola ricezione';
+    h=`<div class="bk-sub">${dot(col)}${esc(i.msg||'Connesso')} · <b>${esc(i.user)}</b></div>
+    <div class="bk-sub" style="margin-top:2px">Ruolo: <b>${ruolo}</b> · ultima sincro: ${last}</div>`;
+    if(canW){
+      h+=`<div class="bk-actions"><button class="bk-btn primary" onclick="fbSyncNow2()"><span class="bk-btn-ico">🔄</span><div class="bk-btn-body"><div class="bk-btn-title">Sincronizza ora</div><div class="bk-btn-sub">Ricevi e poi invia</div></div></button>
+      <button class="bk-btn" onclick="fbLogout2()"><span class="bk-btn-ico">🚪</span><div class="bk-btn-body"><div class="bk-btn-title">Esci dal cloud</div></div></button></div>`;
+    } else {
+      h+=`<div class="bk-sub" style="margin-top:8px;color:var(--text3)">Questo dispositivo <b>riceve soltanto</b>. Le modifiche le inviano l'ufficio e i tecnici autorizzati.</div>
+      <div class="bk-actions"><button class="bk-btn primary" onclick="fbPullNow2()"><span class="bk-btn-ico">⬇️</span><div class="bk-btn-body"><div class="bk-btn-title">Aggiorna dati</div><div class="bk-btn-sub">Scarica l'ultima versione</div></div></button>
+      <button class="bk-btn" onclick="fbLogout2()"><span class="bk-btn-ico">🚪</span><div class="bk-btn-body"><div class="bk-btn-title">Esci dal cloud</div></div></button></div>`;
+    }
+  }
+  el.innerHTML=`<div class="bk-card" style="border-color:rgba(79,156,249,.3);margin-top:4px">${h}</div>`;
+}
+function fbSaveConfig2(){ const j=document.getElementById('fb-cfg').value.trim(); const az=document.getElementById('fb-az').value; if(CocoSync.saveConfig(j,az)) renderSyncPanel(); }
+function fbLogin2(){ const e=(document.getElementById('fb-email').value||'').trim(); const p=document.getElementById('fb-pw').value||''; if(!e||!p){alert('Inserisci email e password.');return;} CocoSync.login(e,p); }
+function fbLogout2(){ CocoSync.logout(); }
+function fbForget2(){ if(confirm('Rimuovere la configurazione Firebase da questo dispositivo?')){ CocoSync.forget(); renderSyncPanel(); } }
+async function fbSyncNow2(){ await CocoSync.pull(); await CocoSync.push(); }
+async function fbPullNow2(){ await CocoSync.pull(); }
 
 function renderBackup(){
   const el=document.getElementById('backup-inner');
