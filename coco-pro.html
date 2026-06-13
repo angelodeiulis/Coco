@@ -1266,7 +1266,7 @@ const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d;};
 const addDays=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
 const diffDays=(a,b)=>Math.round((b-a)/86400000);
 const fmt=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
-const APP_VERSION='114';
+const APP_VERSION='115';
 const TS_COLORS={lavoro:'#22c55e',viaggio:'#4f9cf9',pausa:'#94a3b8'};
 const TS_ICONS={lavoro:'&#128296;',viaggio:'&#128663;',pausa:'&#9749;'};
 const parseDate=s=>new Date(s+'T00:00:00');
@@ -1347,7 +1347,7 @@ const CocoSync=(function(){
   function azienda(){ return (localStorage.getItem(K_AZ)||'sietel').trim()||'sietel'; }
   function isConfigured(){ const c=cfg(); return !!(c&&c.apiKey&&c.projectId); }
   function isOn(){ return isConfigured(); }
-  function _set(st,msg){ S.status=st; if(msg!=null)S.msg=msg; try{ if(typeof renderBackup==='function'&&document.getElementById('backup-inner')) renderBackup(); }catch(e){} try{ if(typeof renderSyncPanel==='function'&&document.getElementById('sync-inner')) renderSyncPanel(); }catch(e){} }
+  function _set(st,msg){ S.status=st; if(msg!=null)S.msg=msg; try{ if(typeof renderBackup==='function'&&document.getElementById('backup-inner')&&state.activeView==='backup') renderBackup(); }catch(e){} try{ if(typeof renderSyncPanel==='function'&&document.getElementById('sync-inner')) renderSyncPanel(); }catch(e){} }
 
   function _loadSDK(){
     if(window.firebase&&firebase.firestore) return Promise.resolve();
@@ -7101,14 +7101,14 @@ function renderSyncPanel(){
   let h='';
   if(!i.on){
     h=`<div class="bk-sub">Sincronizza i dati tra ufficio e tecnici tramite Firebase. La chiave AI e le posizioni GPS non vengono inviate.</div>
-    <textarea id="fb-cfg" placeholder='Incolla qui la config Firebase (JSON con apiKey, projectId, ...)' style="width:100%;box-sizing:border-box;min-height:110px;background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:10px;font-family:var(--mono,monospace);font-size:12px"></textarea>
-    <input id="fb-az" placeholder="Nome azienda (es. sietel)" value="sietel" style="width:100%;box-sizing:border-box;margin-top:8px;background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:10px;font-size:14px">
+    <textarea id="sy-cfg" placeholder='Incolla qui la config Firebase (JSON con apiKey, projectId, ...)' style="width:100%;box-sizing:border-box;min-height:110px;background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:10px;font-family:var(--mono,monospace);font-size:12px"></textarea>
+    <input id="sy-az" placeholder="Nome azienda (es. sietel)" value="sietel" style="width:100%;box-sizing:border-box;margin-top:8px;background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:10px;font-size:14px">
     <button class="bk-btn primary" style="margin-top:10px" onclick="fbSaveConfig2()"><span class="bk-btn-ico">☁️</span><div class="bk-btn-body"><div class="bk-btn-title">Attiva su questo dispositivo</div></div></button>`;
   } else if(!i.user){
     const col=i.status==='error'?'#ef4444':(i.status==='connecting'?'#f59e0b':'#64748b');
     h=`<div class="bk-sub">${dot(col)}${esc(i.msg||'Non autenticato')}</div>
-    <input id="fb-email" type="email" placeholder="Email" value="${esc(CocoSync.lastEmail())}" autocomplete="username" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:11px;font-size:15px">
-    <input id="fb-pw" type="password" placeholder="Password" autocomplete="current-password" style="width:100%;box-sizing:border-box;margin-top:8px;background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:11px;font-size:15px">
+    <input id="sy-email" type="email" placeholder="Email" value="${esc(CocoSync.lastEmail())}" autocomplete="username" style="width:100%;box-sizing:border-box;background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:11px;font-size:15px">
+    <input id="sy-pw" type="password" placeholder="Password" autocomplete="current-password" style="width:100%;box-sizing:border-box;margin-top:8px;background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:11px;font-size:15px">
     <button class="bk-btn primary" style="margin-top:10px" onclick="fbLogin2()"><span class="bk-btn-ico">🔑</span><div class="bk-btn-body"><div class="bk-btn-title">Accedi</div><div class="bk-btn-sub">Azienda: ${esc(i.azienda)}</div></div></button>
     ${uff?`<button class="bk-btn" style="margin-top:8px" onclick="fbForget2()"><span class="bk-btn-ico">⚙️</span><div class="bk-btn-body"><div class="bk-btn-title">Cambia configurazione</div></div></button>`:''}`;
   } else {
@@ -7128,8 +7128,8 @@ function renderSyncPanel(){
   }
   el.innerHTML=`<div class="bk-card" style="border-color:rgba(79,156,249,.3);margin-top:4px">${h}</div>`;
 }
-function fbSaveConfig2(){ const j=document.getElementById('fb-cfg').value.trim(); const az=document.getElementById('fb-az').value; if(CocoSync.saveConfig(j,az)) renderSyncPanel(); }
-function fbLogin2(){ const e=(document.getElementById('fb-email').value||'').trim(); const p=document.getElementById('fb-pw').value||''; if(!e||!p){alert('Inserisci email e password.');return;} CocoSync.login(e,p); }
+function fbSaveConfig2(){ const j=document.getElementById('sy-cfg').value.trim(); const az=document.getElementById('sy-az').value; if(CocoSync.saveConfig(j,az)) renderSyncPanel(); }
+function fbLogin2(){ const e=(document.getElementById('sy-email').value||'').trim(); const p=document.getElementById('sy-pw').value||''; if(!e||!p){alert('Inserisci email e password.');return;} CocoSync.login(e,p); }
 function fbLogout2(){ CocoSync.logout(); }
 function fbForget2(){ if(confirm('Rimuovere la configurazione Firebase da questo dispositivo?')){ CocoSync.forget(); renderSyncPanel(); } }
 async function fbSyncNow2(){ await CocoSync.pull(); await CocoSync.push(); }
