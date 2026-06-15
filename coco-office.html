@@ -1,0 +1,881 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Co.Co. Office — SIE.TEL</title>
+<style>
+/* ============================================================
+   Co.Co. OFFICE — variante PC/ufficio di coco-pro.html
+   Stessa origine GitHub Pages + stesso st_* localStorage + stesso
+   Firebase aziende/sietel  =>  dialoga con l'app smartphone.
+   Questo file è di SOLA LETTURA sui dati: ogni modifica passa
+   dall'app reale (coco-pro.html) incorporata nelle finestre modulo,
+   che possiede sync e persistenza. Nessun rischio di perdita dati.
+   ============================================================ */
+:root{
+  --bg:#0a0f1a; --bg2:#0c1322; --panel:#121b2c; --panel2:#172238;
+  --tile:#141d31; --tile2:#1a2540; --line:#22304a; --line2:#2c3c5a;
+  --text:#e9eff8; --text2:#9cadc6; --text3:#62758f;
+  --accent:#4f9cf9; --accent2:#3b82f6;
+  --cyan:#22d3ee; --teal:#2dd4bf;
+  --green:#34d399; --amber:#f59e0b; --red:#f87171; --violet:#a78bfa;
+  --brand:linear-gradient(135deg,#22d3ee 0%,#2dd4bf 100%);
+  --r:14px; --r2:18px;
+  --sh:0 18px 50px rgba(0,0,0,.55);
+  --ff:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  font-family:var(--ff); color:var(--text); background:
+    radial-gradient(900px 600px at 12% -8%, rgba(34,211,238,.10), transparent 60%),
+    radial-gradient(900px 700px at 110% 0%, rgba(79,156,249,.10), transparent 55%),
+    var(--bg);
+  overflow:hidden; -webkit-font-smoothing:antialiased;
+}
+button{font-family:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.hidden{display:none!important}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#22304a;border-radius:8px;border:2px solid var(--bg2)}
+::-webkit-scrollbar-thumb:hover{background:#2c3c5a}
+
+/* faint grid backdrop like the mockups */
+.bgrid{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.4;
+  background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);
+  background-size:104px 104px;background-position:center}
+
+/* ============ LAUNCHER (schermata 1) ============ */
+#launcher{position:fixed;inset:0;z-index:5;display:grid;place-items:center;padding:28px}
+.win{width:min(980px,94vw);background:linear-gradient(180deg,var(--panel) 0%,var(--bg2) 100%);
+  border:1px solid var(--line);border-radius:22px;box-shadow:var(--sh);overflow:hidden;
+  animation:winIn .5s cubic-bezier(.2,.8,.2,1)}
+@keyframes winIn{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:none}}
+.titlebar{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line);
+  background:rgba(255,255,255,.012)}
+.brand{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:.2px}
+.brand .dot{width:6px;height:6px;border-radius:50%;background:var(--teal);box-shadow:0 0 10px var(--teal)}
+.logo{width:24px;height:24px;flex:0 0 auto}
+.tb-ctrl{margin-left:auto;display:flex;gap:14px;color:var(--text3);font-size:13px}
+.tb-ctrl span{width:14px;text-align:center}
+.win-body{padding:30px 34px 38px}
+.win-head{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:26px}
+.win-head h1{margin:0;font-size:30px;font-weight:800;letter-spacing:-.5px}
+.win-head .role{color:var(--text2);font-size:13px;font-weight:500}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.tile{position:relative;text-align:left;background:linear-gradient(180deg,var(--tile2),var(--tile));
+  border:1px solid var(--line);border-radius:var(--r2);padding:20px 18px 18px;min-height:160px;
+  transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease;overflow:hidden}
+.tile:hover{transform:translateY(-3px);border-color:var(--line2);box-shadow:0 14px 30px rgba(0,0,0,.4)}
+.tile:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.tile .ico{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;margin-bottom:34px;
+  background:rgba(34,211,238,.10);border:1px solid rgba(45,212,191,.22)}
+.tile .ico svg{width:24px;height:24px;stroke:var(--teal)}
+.tile .arr{position:absolute;top:24px;right:18px;color:var(--text3);font-size:15px;transition:.18s}
+.tile:hover .arr{color:var(--teal);transform:translateX(2px)}
+.tile h3{margin:0 0 5px;font-size:16px;font-weight:700;line-height:1.2}
+.tile p{margin:0;font-size:12px;color:var(--text3);line-height:1.4}
+.tile.primary .ico{background:rgba(79,156,249,.12);border-color:rgba(79,156,249,.28)}
+.tile.primary .ico svg{stroke:var(--accent)}
+.win-foot{display:flex;align-items:center;gap:14px;margin-top:26px;color:var(--text3);font-size:12px}
+.win-foot .open-dash{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--accent);
+  background:rgba(79,156,249,.12);border:1px solid rgba(79,156,249,.25);padding:9px 16px;border-radius:11px;
+  font-weight:600;font-size:13px;transition:.15s}
+.win-foot .open-dash:hover{background:rgba(79,156,249,.2)}
+
+/* ============ WORKSPACE (schermata 2) ============ */
+#workspace{position:fixed;inset:0;z-index:4;display:none;grid-template-columns:236px 1fr;height:100%}
+.sidebar{background:linear-gradient(180deg,var(--panel) 0%,var(--bg2) 100%);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;padding:18px 14px;min-height:0}
+.sb-brand{display:flex;align-items:center;gap:9px;padding:6px 8px 16px;font-weight:800;font-size:18px}
+.sb-brand .pill{font-size:10px;font-weight:700;letter-spacing:1px;color:#06202a;background:var(--brand);
+  padding:3px 8px;border-radius:6px}
+.nav{display:flex;flex-direction:column;gap:2px;overflow:auto;flex:1;min-height:0}
+.nav button{display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:10px;color:var(--text2);
+  font-size:14px;font-weight:500;text-align:left;transition:.13s}
+.nav button svg{width:18px;height:18px;stroke:currentColor;flex:0 0 auto}
+.nav button:hover{background:rgba(255,255,255,.04);color:var(--text)}
+.nav button.on{background:rgba(79,156,249,.14);color:#cfe2ff}
+.nav button.on svg{stroke:var(--accent)}
+.nav .badge{margin-left:auto;font-size:11px;font-weight:700;background:var(--red);color:#fff;
+  border-radius:20px;padding:1px 7px}
+.sb-foot{border-top:1px solid var(--line);margin-top:10px;padding-top:12px}
+.sync{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--text2);padding:6px 8px;border-radius:9px;
+  cursor:pointer;transition:.13s}
+.sync:hover{background:rgba(255,255,255,.04)}
+.sync .led{width:9px;height:9px;border-radius:50%;background:var(--green);flex:0 0 auto;box-shadow:0 0 8px var(--green)}
+.sync .led.warn{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+.sync .led.off{background:var(--text3);box-shadow:none}
+.sb-ver{padding:10px 8px 2px;color:var(--text3);font-size:11px;line-height:1.5}
+.sb-ver b{color:var(--text2);font-weight:700;letter-spacing:.5px}
+
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.topbar{display:flex;align-items:center;gap:16px;padding:14px 24px;border-bottom:1px solid var(--line);
+  background:rgba(10,15,26,.6);backdrop-filter:blur(6px)}
+.search{flex:1;max-width:560px;display:flex;align-items:center;gap:10px;background:var(--panel2);
+  border:1px solid var(--line);border-radius:12px;padding:10px 14px;color:var(--text3)}
+.search input{flex:1;background:none;border:0;outline:none;color:var(--text);font-size:14px}
+.search input::placeholder{color:var(--text3)}
+.tb-right{margin-left:auto;display:flex;align-items:center;gap:14px}
+.ib{position:relative;width:38px;height:38px;border-radius:10px;display:grid;place-items:center;color:var(--text2);
+  background:var(--panel2);border:1px solid var(--line)}
+.ib:hover{color:var(--text)}
+.ib .nb{position:absolute;top:-5px;right:-5px;background:var(--red);color:#fff;font-size:10px;font-weight:700;
+  border-radius:20px;min-width:17px;height:17px;display:grid;place-items:center;padding:0 4px}
+.user{display:flex;align-items:center;gap:10px;padding:5px 6px 5px 5px;border-radius:11px;border:1px solid var(--line);
+  background:var(--panel2)}
+.user .av{width:30px;height:30px;border-radius:50%;background:var(--brand);display:grid;place-items:center;
+  font-size:12px;font-weight:800;color:#062028}
+.user .who{line-height:1.15}.user .who b{font-size:13px}.user .who span{font-size:11px;color:var(--text3)}
+
+.content{flex:1;overflow:auto;min-height:0}
+.page{padding:22px 24px 40px;display:none}
+.page.on{display:block}
+.page-h{display:flex;align-items:center;gap:12px;margin:2px 0 18px}
+.page-h h2{margin:0;font-size:21px;font-weight:800;letter-spacing:-.3px}
+.page-h .sub{color:var(--text3);font-size:13px}
+.back{display:flex;align-items:center;gap:7px;color:var(--text2);font-size:13px;font-weight:600;
+  background:var(--panel2);border:1px solid var(--line);padding:7px 13px;border-radius:10px}
+.back:hover{color:var(--text)}
+
+/* KPI */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
+.kpi{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);
+  border-radius:var(--r);padding:16px 18px}
+.kpi .top{display:flex;align-items:flex-start;justify-content:space-between}
+.kpi .lbl{font-size:11px;font-weight:700;letter-spacing:.8px;color:var(--text3);text-transform:uppercase}
+.kpi .ico{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:rgba(79,156,249,.12)}
+.kpi .ico svg{width:20px;height:20px;stroke:var(--accent)}
+.kpi.amber .ico{background:rgba(245,158,11,.13)} .kpi.amber .ico svg{stroke:var(--amber)}
+.kpi.red .ico{background:rgba(248,113,113,.13)} .kpi.red .ico svg{stroke:var(--red)}
+.kpi.teal .ico{background:rgba(45,212,191,.13)} .kpi.teal .ico svg{stroke:var(--teal)}
+.kpi .num{font-size:34px;font-weight:800;letter-spacing:-1px;margin:6px 0 2px;line-height:1}
+.kpi .note{font-size:12px;color:var(--text3)}
+.kpi .note.up{color:var(--green)} .kpi .note.dn{color:var(--red)}
+
+/* layout cols */
+.cols{display:grid;grid-template-columns:1fr 360px;gap:16px;margin-bottom:16px}
+@media(max-width:1180px){.cols{grid-template-columns:1fr}}
+.card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);
+  border-radius:var(--r);padding:16px 18px}
+.card-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.card-h h3{margin:0;font-size:12px;font-weight:700;letter-spacing:.8px;color:var(--text2);text-transform:uppercase}
+.card-h a{color:var(--accent);font-size:12px;font-weight:600}
+.card-h a:hover{text-decoration:underline}
+
+/* commesse table */
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.6px;color:var(--text3);
+  text-transform:uppercase;padding:0 8px 9px}
+.tbl td{padding:11px 8px;border-top:1px solid var(--line)}
+.tbl tr:hover td{background:rgba(255,255,255,.018)}
+.code{font-weight:700;color:var(--text)}
+.cl{color:var(--text2)}
+.st{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600}
+.st .d{width:7px;height:7px;border-radius:50%}
+.st.corso{color:var(--green)} .st.corso .d{background:var(--green)}
+.st.ritardo{color:var(--red)} .st.ritardo .d{background:var(--red)}
+.st.fatta{color:var(--text3)} .st.fatta .d{background:var(--text3)}
+.st.attesa{color:var(--amber)} .st.attesa .d{background:var(--amber)}
+.bar{height:7px;border-radius:5px;background:rgba(255,255,255,.07);overflow:hidden;min-width:74px}
+.bar i{display:block;height:100%;border-radius:5px;background:var(--green)}
+.bar.r i{background:var(--red)} .bar.a i{background:var(--amber)}
+.sc{font-weight:600;color:var(--text2)} .sc.late{color:var(--red)}
+
+/* list (scadenze / comunicazioni / documenti) */
+.lst{display:flex;flex-direction:column}
+.li{display:flex;align-items:center;gap:12px;padding:11px 4px;border-top:1px solid var(--line)}
+.li:first-child{border-top:0}
+.li .lico{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:var(--panel);
+  border:1px solid var(--line);flex:0 0 auto}
+.li .lico svg{width:17px;height:17px;stroke:var(--text2)}
+.li .lt{flex:1;min-width:0}
+.li .lt b{display:block;font-size:13px;font-weight:600}
+.li .lt span{font-size:11.5px;color:var(--text3)}
+.li .dt{font-size:12px;font-weight:700;color:var(--amber);white-space:nowrap}
+.li .dt.late{color:var(--red)}
+
+/* accesso rapido */
+.quick{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+@media(max-width:1280px){.quick{grid-template-columns:repeat(3,1fr)}}
+.qb{display:flex;flex-direction:column;align-items:center;gap:10px;padding:16px 8px;border-radius:12px;
+  background:var(--panel);border:1px solid var(--line);transition:.15s}
+.qb:hover{border-color:var(--line2);transform:translateY(-2px)}
+.qb .qi{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:rgba(79,156,249,.12)}
+.qb .qi svg{width:20px;height:20px;stroke:var(--accent)}
+.qb span{font-size:12px;font-weight:600;color:var(--text2)}
+
+/* mini widgets row */
+.minis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+@media(max-width:1180px){.minis{grid-template-columns:repeat(2,1fr)}}
+.mrow{display:flex;align-items:center;justify-content:space-between;padding:9px 2px;border-top:1px solid var(--line);font-size:13px}
+.mrow:first-of-type{border-top:0}
+.mrow .v{font-weight:800;font-size:15px}
+.mrow .v.warn{color:var(--amber)} .mrow .v.bad{color:var(--red)}
+
+/* calendar */
+.cal-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:12px;font-weight:700;color:var(--text2)}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.cal .dow{font-size:10px;color:var(--text3);text-align:center;font-weight:700;padding-bottom:2px}
+.cal .cd{aspect-ratio:1;display:grid;place-items:center;font-size:11.5px;color:var(--text2);border-radius:7px;position:relative}
+.cal .cd.muted{color:var(--text3);opacity:.4}
+.cal .cd.today{background:var(--accent);color:#fff;font-weight:800}
+.cal .cd.mk::after{content:'';position:absolute;bottom:3px;width:4px;height:4px;border-radius:50%;background:var(--teal)}
+.cal .cd.today.mk::after{background:#fff}
+
+/* empty states */
+.empty{padding:22px 8px;text-align:center;color:var(--text3);font-size:13px}
+
+/* MODULE FRAME (apre l'app reale incorporata) */
+.frame-wrap{height:calc(100vh - 64px);display:flex;flex-direction:column;background:
+  radial-gradient(700px 500px at 50% -10%,rgba(34,211,238,.06),transparent 60%),var(--bg)}
+.frame-bar{display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid var(--line)}
+.frame-bar .t{font-weight:700;font-size:14px}
+.frame-bar .t small{color:var(--text3);font-weight:500;margin-left:8px}
+.frame-bar .acts{margin-left:auto;display:flex;gap:8px}
+.frame-bar .acts button{font-size:12px;font-weight:600;color:var(--text2);background:var(--panel2);
+  border:1px solid var(--line);padding:7px 12px;border-radius:9px}
+.frame-bar .acts button:hover{color:var(--text)}
+.frame-stage{flex:1;display:grid;place-items:center;padding:18px;min-height:0;overflow:auto}
+.phone{width:430px;max-width:96%;height:100%;background:#000;border-radius:20px;border:1px solid var(--line2);
+  overflow:hidden;box-shadow:var(--sh)}
+.phone.wide{width:100%;border-radius:14px}
+.phone iframe{width:100%;height:100%;border:0;background:var(--bg)}
+.frame-fallback{max-width:460px;text-align:center;color:var(--text2);font-size:14px;line-height:1.6}
+.frame-fallback h3{color:var(--text);margin:0 0 8px}
+.frame-fallback code{background:var(--panel2);border:1px solid var(--line);padding:2px 7px;border-radius:6px;
+  font-size:12px;color:var(--cyan)}
+
+/* toast */
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);z-index:20;
+  background:var(--panel2);border:1px solid var(--line2);color:var(--text);padding:11px 18px;border-radius:11px;
+  font-size:13px;box-shadow:var(--sh);opacity:0;transition:.25s;pointer-events:none}
+#toast.show{opacity:1;transform:translateX(-50%)}
+.demo-badge{position:fixed;top:14px;right:16px;z-index:30;font-size:10.5px;font-weight:800;letter-spacing:.6px;
+  background:rgba(245,158,11,.15);color:var(--amber);border:1px solid rgba(245,158,11,.35);
+  padding:5px 10px;border-radius:20px}
+
+@media(max-width:920px){
+  .grid{grid-template-columns:repeat(2,1fr)}
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  #workspace{grid-template-columns:1fr}
+  .sidebar{display:none}
+}
+</style>
+</head>
+<body>
+<div class="bgrid"></div>
+<div id="demoBadge" class="demo-badge hidden">DATI DEMO</div>
+
+<!-- ============ LAUNCHER ============ -->
+<div id="launcher">
+  <div class="win">
+    <div class="titlebar">
+      <span class="dot"></span>
+      <svg class="logo" viewBox="0 0 24 24" fill="none"><defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#2dd4bf"/></linearGradient></defs><path d="M20 12a8 8 0 1 1-3-6.2" stroke="url(#g1)" stroke-width="2.4" stroke-linecap="round"/><path d="M14 4.5l3.6 1 .2 3.6" stroke="url(#g1)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="brand">Co.Co. Office</span>
+      <span class="dot"></span>
+      <div class="tb-ctrl"><span>—</span><span>▢</span><span>✕</span></div>
+    </div>
+    <div class="win-body">
+      <div class="win-head">
+        <h1>Sezione Ufficio</h1>
+        <div class="role" id="lc-role">Sezione Ufficio · Amministratore</div>
+      </div>
+      <div class="grid" id="lc-grid"><!-- tiles --></div>
+      <div class="win-foot">
+        <span id="lc-sync">Sincronizzazione · —</span>
+        <button class="open-dash" onclick="goWorkspace('dashboard')">Apri la Dashboard →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ WORKSPACE ============ -->
+<div id="workspace">
+  <aside class="sidebar">
+    <div class="sb-brand">Co.Co. <span class="pill">OFFICE</span></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="sb-foot">
+      <div class="sync" id="syncBtn" onclick="cloudPull(true)">
+        <span class="led off" id="syncLed"></span>
+        <div><div id="syncTitle" style="font-weight:600">Sincronizzazione</div>
+          <div id="syncMsg" style="font-size:11px;color:var(--text3)">tocca per scaricare</div></div>
+      </div>
+      <div class="sb-ver"><b id="azName">SIE.TEL</b><br>Office Launcher<br>v1.0.0 · dati condivisi</div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="search">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="globalSearch" placeholder="Cerca commesse, attività, materiali…" oninput="onSearch(this.value)">
+      </div>
+      <div class="tb-right">
+        <button class="ib" title="Notifiche" onclick="go('attivita')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="nb" id="notifBadge">0</span></button>
+        <button class="ib" title="Backup" onclick="openModule('backup')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9c2.5 0 4.7 1 6.4 2.6L21 8"/><path d="M21 3v5h-5"/></svg></button>
+        <div class="user"><div class="av" id="userAv">ST</div><div class="who"><b id="userName">Ufficio</b><br><span>Amministratore</span></div></div>
+      </div>
+    </header>
+
+    <div class="content" id="content"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ================= CONFIG ================= */
+/* Stessa app cloud del telefono. Se i file stanno sulla stessa GitHub Pages,
+   non serve toccare nulla: dati condivisi via localStorage (stesso PC) e Firebase (tra dispositivi). */
+const APP_FILE = 'coco-pro.html';                 // l'app smartphone reale, incorporata nei moduli
+const FB_CONFIG = {                               // identica a SIETEL_FB_CONFIG in coco-pro.html
+  apiKey:"AIzaSyCcJz769eGFvZSJTzXeYp1pm-j9jndDT8w",
+  authDomain:"coordinatore-commesse.firebaseapp.com",
+  projectId:"coordinatore-commesse",
+  storageBucket:"coordinatore-commesse.firebasestorage.app",
+  messagingSenderId:"223009969345",
+  appId:"1:223009969345:web:1a1f557ba49f166f257040"
+};
+const AZIENDA = 'sietel';
+
+/* ================= DATA LAYER (sola lettura sui dati) ================= */
+const DB = { commesse:[], tecnici:[], materiali:[], movimenti:[], eventi:[], rapportini:[], computi:[], promemoria:[], azienda:'Co.Co.', demo:false };
+function lsGet(k){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):null; }catch(e){ return null; } }
+function loadLocal(){
+  DB.commesse = lsGet('st_c4')   || [];
+  DB.tecnici  = lsGet('st_t4')   || [];
+  DB.materiali= lsGet('st_m4')   || [];
+  DB.movimenti= lsGet('st_mov4') || [];
+  DB.eventi   = lsGet('st_ev4')  || [];
+  DB.rapportini=lsGet('st_rp4')  || [];
+  DB.computi  = lsGet('st_cm4')  || [];
+  DB.promemoria=lsGet('st_pm4')  || [];
+  try{ DB.azienda = localStorage.getItem('st_az4') || 'Co.Co.'; }catch(e){}
+}
+
+/* ---- helpers su date/fasi ---- */
+const startOfDay = d=>{ const x=new Date(d); x.setHours(0,0,0,0); return x; };
+const TODAY = startOfDay(new Date());
+function parseISO(s){ if(!s) return null; const d=new Date(String(s).length<=10?s+'T00:00:00':s); return isNaN(d)?null:d; }
+function daysFromToday(s){ const d=parseISO(s); if(!d) return null; return Math.round((startOfDay(d)-TODAY)/86400000); }
+function faseDone(f){ const s=(f.stato||'').toLowerCase(); return s==='completata'||s==='conclusa'||s==='completato'; }
+function faseStarted(f){ const di=daysFromToday(f.inizio); return di!=null && di<=0; }
+function faseLate(f){ if(faseDone(f)) return false; const df=daysFromToday(f.fine); return df!=null && df<0; }
+function commessaFasi(c){ return c.fasi||[]; }
+function commessaAvanz(c){ const fs=commessaFasi(c); if(!fs.length) return 0; return Math.round(100*fs.filter(faseDone).length/fs.length); }
+function commessaFine(c){ // scadenza = ultima data fine tra le fasi non concluse, altrimenti l'ultima in assoluto
+  const fs=commessaFasi(c); let best=null;
+  fs.forEach(f=>{ const d=parseISO(f.fine); if(!d) return; if(!faseDone(f)){ if(!best||d>best) best=d; } });
+  if(!best) fs.forEach(f=>{ const d=parseISO(f.fine); if(d&&(!best||d>best)) best=d; });
+  return best;
+}
+function commessaStato(c){
+  const fs=commessaFasi(c); if(!fs.length) return 'attesa';
+  if(fs.every(faseDone)) return 'fatta';
+  if(fs.some(faseLate)) return 'ritardo';
+  if(fs.some(faseStarted)) return 'corso';
+  return 'attesa';
+}
+const STATO_LABEL = {corso:'In corso',ritardo:'In ritardo',fatta:'Completata',attesa:'Da avviare'};
+function commessaAttiva(c){ return commessaStato(c)!=='fatta'; }
+
+/* ---- KPI ---- */
+function kpis(){
+  let attive=0, attCorso=0, scad7=0, critic=0;
+  DB.commesse.forEach(c=>{ if(commessaAttiva(c)) attive++; });
+  DB.commesse.forEach(c=>commessaFasi(c).forEach(f=>{
+    if(!faseDone(f)&&faseStarted(f)) attCorso++;
+    const df=daysFromToday(f.fine);
+    if(!faseDone(f)&&df!=null&&df>=0&&df<=7) scad7++;
+    if(faseLate(f)) critic++;
+  }));
+  // materiali sotto soglia contano come criticità
+  critic += DB.materiali.filter(m=>(m.soglia||0)>0 && (m.scorta||0)<(m.soglia||0)).length;
+  return {attive,attCorso,scad7,critic};
+}
+/* attività (fasi) in scadenza, ordinate per data */
+function attivitaScadenza(limit){
+  const out=[];
+  DB.commesse.forEach(c=>commessaFasi(c).forEach(f=>{
+    if(faseDone(f)) return;
+    const df=daysFromToday(f.fine); if(df==null) return;
+    out.push({c,f,df,fine:parseISO(f.fine)});
+  }));
+  out.sort((a,b)=>a.df-b.df);
+  return out.slice(0,limit||6);
+}
+function materialiEsaurimento(){ return DB.materiali.filter(m=>(m.soglia||0)>0 && (m.scorta||0)<(m.soglia||0)); }
+function movimentiOggi(){ const t=TODAY.getTime(); return DB.movimenti.filter(m=>{ const q=m.quando||(m.data&&parseISO(m.data)); const d=q?startOfDay(new Date(q)).getTime():null; return d===t; }); }
+
+/* ================= ICONS ================= */
+const I = {
+  commesse:'<path d="M3 7h7l2 2h9v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7z"/><path d="M3 7V5a1 1 0 0 1 1-1h5l2 2"/>',
+  risorse:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/><path d="M16 3.1a4 4 0 0 1 0 7.8"/>',
+  magazzino:'<path d="M3 9 12 3l9 6v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M3 9h18"/><path d="M9 22V12h6v10"/>',
+  ordini:'<circle cx="9" cy="21" r="1.5"/><circle cx="18" cy="21" r="1.5"/><path d="M2 3h3l2.6 13.4a1 1 0 0 0 1 .8h9.7a1 1 0 0 0 1-.8L22 7H6"/>',
+  piano:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M8 14h3M14 14h2M8 18h2"/>',
+  computo:'<path d="M9 7h6M9 11h6M9 15h4"/><rect x="4" y="3" width="16" height="18" rx="2"/>',
+  report:'<path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6"/><rect x="12" y="7" width="3" height="10"/><rect x="17" y="13" width="3" height="4"/>',
+  backup:'<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>',
+  dash:'<rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>',
+  calendar:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>',
+  doc:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
+  alert:'<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  briefcase:'<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>',
+  check:'<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
+  upload:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5-5 5 5M12 5v12"/>',
+  userplus:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/>',
+  pin:'<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/>'
+};
+function svg(p,cls){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="'+(cls||'')+'">'+p+'</svg>'; }
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ================= LAUNCHER TILES ================= */
+/* target: 'page' apre una pagina nativa della dashboard; 'module' incorpora coco-pro.html */
+const TILES = [
+  {k:'commesse', icon:I.commesse, t:'Commesse & Cantieri', d:'Stato lavori, fasi e avanzamento', target:'page', primary:true},
+  {k:'risorse',  icon:I.risorse,  t:'Risorse Umane', d:'Tecnici, presenze e foglio ore', target:'module'},
+  {k:'magazzino',icon:I.magazzino,t:'Magazzino', d:'Scorte, soglie e movimenti', target:'page'},
+  {k:'ordini',   icon:I.ordini,   t:'Ordini Fornitori', d:'Materiali da ordinare e in arrivo', target:'module'},
+  {k:'piano',    icon:I.piano,    t:'Programmazione Settimanale', d:'Pianificazione tecnici e cantieri', target:'module'},
+  {k:'computo',  icon:I.computo,  t:'Computi Metrici', d:'Computi e preventivi commessa', target:'module'},
+  {k:'report',   icon:I.report,   t:'Report & Presenze', d:'Report attività e presenze', target:'module'},
+  {k:'backup',   icon:I.backup,   t:'Backup & Dati', d:'Backup, ripristino e sincronizzazione', target:'module'},
+];
+function renderLauncher(){
+  document.getElementById('lc-grid').innerHTML = TILES.map(t=>`
+    <button class="tile ${t.primary?'primary':''}" onclick="tileGo('${t.k}')">
+      <div class="ico">${svg(t.icon)}</div>
+      <span class="arr">→</span>
+      <h3>${esc(t.t)}</h3><p>${esc(t.d)}</p>
+    </button>`).join('');
+  document.getElementById('lc-role').textContent = (DB.azienda||'SIE.TEL')+' · Ufficio';
+}
+function tileGo(k){
+  const t = TILES.find(x=>x.k===k);
+  goWorkspace(t.target==='module' ? null : k);
+  if(t.target==='module') openModule(k);
+}
+
+/* ================= NAV ================= */
+const NAV = [
+  {k:'dashboard', t:'Dashboard', icon:I.dash},
+  {k:'commesse',  t:'Commesse', icon:I.commesse},
+  {k:'attivita',  t:'Attività', icon:I.list},
+  {k:'magazzino', t:'Magazzino', icon:I.magazzino},
+  {k:'calendario',t:'Calendario', icon:I.calendar},
+  {sep:true},
+  {k:'risorse',   t:'Risorse umane', icon:I.risorse, mod:true},
+  {k:'piano',     t:'Programmazione', icon:I.piano, mod:true},
+  {k:'computo',   t:'Computi metrici', icon:I.computo, mod:true},
+  {k:'report',    t:'Report & presenze', icon:I.report, mod:true},
+  {k:'ordini',    t:'Ordini fornitori', icon:I.ordini, mod:true},
+  {sep:true},
+  {k:'backup',    t:'Backup & dati', icon:I.backup, mod:true},
+];
+function renderNav(){
+  document.getElementById('nav').innerHTML = NAV.map(n=>{
+    if(n.sep) return '<div style="height:1px;background:var(--line);margin:8px 6px"></div>';
+    const badge = n.k==='attivita' ? `<span class="badge" id="navBadge" style="display:none"></span>` : '';
+    return `<button data-k="${n.k}" onclick="${n.mod?`openModule('${n.k}')`:`go('${n.k}')`}">${svg(n.icon)}<span>${n.t}</span>${badge}</button>`;
+  }).join('');
+}
+function setActiveNav(k){ document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on', b.dataset.k===k)); }
+
+/* ================= ROUTING ================= */
+let curPage='dashboard';
+function goWorkspace(k){
+  document.getElementById('launcher').classList.add('hidden');
+  document.getElementById('workspace').style.display='grid';
+  if(k) go(k);
+}
+function go(k){
+  curPage=k; setActiveNav(k);
+  const c=document.getElementById('content');
+  if(k==='dashboard')      c.innerHTML = viewDashboard();
+  else if(k==='commesse')  c.innerHTML = viewCommesse();
+  else if(k==='attivita')  c.innerHTML = viewAttivita();
+  else if(k==='magazzino') c.innerHTML = viewMagazzino();
+  else if(k==='calendario')c.innerHTML = viewCalendario();
+  else c.innerHTML = viewDashboard();
+  c.scrollTop=0;
+  if(k==='calendario') buildCalendar();
+}
+
+/* ================= VIEWS ================= */
+function pageHead(title,sub,back){
+  return `<div class="page-h">${back?`<button class="back" onclick="go('dashboard')">${svg(I.dash,'')}&nbsp;Dashboard</button>`:''}
+    <h2>${esc(title)}</h2>${sub?`<span class="sub">${esc(sub)}</span>`:''}</div>`;
+}
+
+function viewDashboard(){
+  const k=kpis();
+  const attive=DB.commesse.filter(commessaAttiva).slice(0,6);
+  const scad=attivitaScadenza(5);
+  const esa=materialiEsaurimento();
+  const movOggi=movimentiOggi();
+  const ordiniAttesa = DB.materiali.filter(m=>(m.scorta||0)<((m.soglia||0))).length;
+  return `<div class="page on">
+    ${pageHead('Dashboard','Centro di controllo · '+(DB.azienda||'SIE.TEL'))}
+    <div class="kpis">
+      ${kpiCard('Commesse attive',k.attive,I.briefcase,'',DB.commesse.length+' totali')}
+      ${kpiCard('Attività in corso',k.attCorso,I.list,'teal','fasi avviate')}
+      ${kpiCard('In scadenza',k.scad7,I.clock,'amber','entro 7 giorni')}
+      ${kpiCard('Criticità',k.critic,I.alert,'red','richiedono attenzione')}
+    </div>
+    <div class="cols">
+      <div class="card">
+        <div class="card-h"><h3>Panoramica commesse</h3><a onclick="go('commesse')">Vedi tutte →</a></div>
+        ${tableCommesse(attive)}
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>Attività in scadenza</h3><a onclick="go('attivita')">Vedi tutte →</a></div>
+        ${listScadenze(scad)}
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-h"><h3>Accesso rapido</h3></div>
+      <div class="quick">
+        ${quickBtn('Nuova commessa',I.plus,"openModule('commesse')")}
+        ${quickBtn('Registra ore',I.clock,"openModule('report')")}
+        ${quickBtn('Carico/scarico',I.upload,"openModule('magazzino')")}
+        ${quickBtn('Aggiungi tecnico',I.userplus,"openModule('risorse')")}
+        ${quickBtn('Backup dati',I.backup,"openModule('backup')")}
+      </div>
+    </div>
+    <div class="minis">
+      <div class="card">
+        <div class="card-h"><h3>Magazzino</h3><a onclick="go('magazzino')">→</a></div>
+        <div class="mrow"><span>Materiali in esaurimento</span><span class="v ${esa.length?'bad':''}">${esa.length}</span></div>
+        <div class="mrow"><span>Articoli sotto soglia</span><span class="v ${ordiniAttesa?'warn':''}">${ordiniAttesa}</span></div>
+        <div class="mrow"><span>Movimenti oggi</span><span class="v">${movOggi.length}</span></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>Documenti recenti</h3><a onclick="openModule('report')">→</a></div>
+        ${listDocumenti()}
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>Comunicazioni</h3><a onclick="openModule('commesse')">→</a></div>
+        ${listComunicazioni()}
+      </div>
+      <div class="card">
+        <div class="card-h"><h3 id="calLbl">Calendario</h3><a onclick="go('calendario')">→</a></div>
+        <div id="dashCal"></div>
+      </div>
+    </div>
+  </div>`;
+}
+setTimeout(()=>{},0);
+
+function kpiCard(lbl,num,icon,cls,note){
+  return `<div class="kpi ${cls||''}"><div class="top"><span class="lbl">${lbl}</span>
+    <span class="ico">${svg(icon)}</span></div>
+    <div class="num">${num}</div><div class="note">${esc(note||'')}</div></div>`;
+}
+function quickBtn(t,icon,onclick){
+  return `<button class="qb" onclick="${onclick}"><span class="qi">${svg(icon)}</span><span>${esc(t)}</span></button>`;
+}
+
+function tableCommesse(list){
+  if(!list.length) return `<div class="empty">Nessuna commessa attiva. Aprila in <b>Commesse</b> per crearne una.</div>`;
+  const rows=list.map((c,i)=>{
+    const st=commessaStato(c), av=commessaAvanz(c), fine=commessaFine(c);
+    const df = fine? Math.round((startOfDay(fine)-TODAY)/86400000) : null;
+    const late = st==='ritardo' || (df!=null&&df<0);
+    const barCls = st==='ritardo'?'r':(st==='attesa'?'a':'');
+    const code = c.codice || ('C-'+String(i+1).padStart(3,'0'));
+    return `<tr>
+      <td class="code">${esc(code)}<div style="font-weight:400;color:var(--text3);font-size:11px;margin-top:2px">${esc(c.nome||'cantiere')}</div></td>
+      <td class="cl">${esc(c.cliente||'—')}</td>
+      <td><span class="st ${st}"><span class="d"></span>${STATO_LABEL[st]}</span></td>
+      <td><div style="display:flex;align-items:center;gap:8px"><div class="bar ${barCls}"><i style="width:${av}%"></i></div><b style="font-size:12px">${av}%</b></div></td>
+      <td class="sc ${late?'late':''}">${fine?fmtDate(fine):'—'}</td>
+    </tr>`;
+  }).join('');
+  return `<table class="tbl"><thead><tr><th>Commessa</th><th>Cliente</th><th>Stato</th><th>Avanzamento</th><th>Scadenza</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function fmtDate(d){ return d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}); }
+function fmtShort(d){ return d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'}); }
+
+function listScadenze(list){
+  if(!list.length) return `<div class="empty">Nessuna attività in scadenza. Tutto sotto controllo.</div>`;
+  return `<div class="lst">`+list.map(x=>{
+    const late=x.df<0;
+    return `<div class="li"><div class="lico">${svg(late?I.alert:I.clock)}</div>
+      <div class="lt"><b>${esc(x.f.nome||'Fase')}</b><span>${esc((x.c.cliente?x.c.cliente+' · ':'')+(x.c.nome||'cantiere'))}</span></div>
+      <div class="dt ${late?'late':''}">${x.fine?fmtShort(x.fine):'—'}</div></div>`;
+  }).join('')+`</div>`;
+}
+
+function listDocumenti(){
+  const docs=(DB.rapportini||[]).slice().sort((a,b)=>(b.ts||b.quando||0)-(a.ts||a.quando||0)).slice(0,3);
+  if(!docs.length) return `<div class="empty">Nessun documento recente.</div>`;
+  return `<div class="lst">`+docs.map(r=>{
+    const c=DB.commesse.find(x=>x.id===r.commessaId);
+    const d=r.ts||r.quando; const ds=d?fmtShort(new Date(d)):'';
+    return `<div class="li"><div class="lico">${svg(I.doc)}</div>
+      <div class="lt"><b>Rapportino${c?' · '+esc(c.nome||''):''}</b><span>${ds}</span></div></div>`;
+  }).join('')+`</div>`;
+}
+function listComunicazioni(){
+  const pm=(DB.promemoria||[]).slice().sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,3);
+  if(!pm.length) return `<div class="empty">Nessuna comunicazione.</div>`;
+  return `<div class="lst">`+pm.map(p=>{
+    const ds=p.ts?fmtShort(new Date(p.ts)):'';
+    return `<div class="li"><div class="lico">${svg(I.check)}</div>
+      <div class="lt"><b>${esc((p.testo||p.nota||'Promemoria').slice(0,42))}</b><span>${ds}</span></div></div>`;
+  }).join('')+`</div>`;
+}
+
+function viewCommesse(){
+  const list=DB.commesse.slice().sort((a,b)=>{ const o={ritardo:0,corso:1,attesa:2,fatta:3}; return o[commessaStato(a)]-o[commessaStato(b)]; });
+  return `<div class="page on">
+    ${pageHead('Commesse & Cantieri',DB.commesse.length+' commesse',true)}
+    <div style="margin-bottom:14px"><button class="back" style="color:var(--accent);border-color:rgba(79,156,249,.3)" onclick="openModule('commesse')">${svg(I.plus)}&nbsp;Apri editor commesse (app)</button></div>
+    <div class="card">${tableCommesse(list)}</div>
+  </div>`;
+}
+
+function viewAttivita(){
+  const all=[]; DB.commesse.forEach(c=>commessaFasi(c).forEach(f=>{ if(!faseDone(f)) all.push({c,f,df:daysFromToday(f.fine),fine:parseISO(f.fine)}); }));
+  all.sort((a,b)=>(a.df==null?9e9:a.df)-(b.df==null?9e9:b.df));
+  return `<div class="page on">
+    ${pageHead('Attività','Fasi aperte ordinate per scadenza',true)}
+    <div class="card">${listScadenze(all.slice(0,60))}</div>
+  </div>`;
+}
+
+function viewMagazzino(){
+  const esa=materialiEsaurimento();
+  const rows=DB.materiali.slice().sort((a,b)=>{
+    const ea=(a.soglia||0)>0&&(a.scorta||0)<(a.soglia||0)?0:1, eb=(b.soglia||0)>0&&(b.scorta||0)<(b.soglia||0)?0:1;
+    return ea-eb;
+  }).map(m=>{
+    const sotto=(m.soglia||0)>0&&(m.scorta||0)<(m.soglia||0);
+    return `<tr><td class="code">${esc(m.nome||m.descrizione||'—')}</td>
+      <td class="cl">${esc(m.fornitore||'—')}</td>
+      <td><b style="${sotto?'color:var(--red)':''}">${(m.scorta||0)} ${esc(m.unita||'')}</b></td>
+      <td class="cl">${(m.soglia||0)||'—'}</td>
+      <td>${sotto?'<span class="st ritardo"><span class="d"></span>Da ordinare</span>':'<span class="st corso"><span class="d"></span>OK</span>'}</td></tr>`;
+  }).join('');
+  return `<div class="page on">
+    ${pageHead('Magazzino',DB.materiali.length+' articoli · '+esa.length+' in esaurimento',true)}
+    <div style="margin-bottom:14px"><button class="back" style="color:var(--accent);border-color:rgba(79,156,249,.3)" onclick="openModule('magazzino')">${svg(I.upload)}&nbsp;Carico / scarico (app)</button></div>
+    <div class="card">${DB.materiali.length?`<table class="tbl"><thead><tr><th>Articolo</th><th>Fornitore</th><th>Scorta</th><th>Soglia</th><th>Stato</th></tr></thead><tbody>${rows}</tbody></table>`:'<div class="empty">Magazzino vuoto.</div>'}</div>
+  </div>`;
+}
+
+function viewCalendario(){
+  return `<div class="page on">${pageHead('Calendario','Scadenze fasi ed eventi',true)}
+    <div class="card" style="max-width:520px"><div id="bigCal"></div></div></div>`;
+}
+
+/* ---- calendar builder ---- */
+let calMonth=new Date(TODAY.getFullYear(),TODAY.getMonth(),1);
+function markedDays(){
+  const set={};
+  DB.commesse.forEach(c=>commessaFasi(c).forEach(f=>{ [f.inizio,f.fine].forEach(s=>{ const d=parseISO(s); if(d) set[startOfDay(d).getTime()]=1; }); }));
+  (DB.eventi||[]).forEach(e=>{ const d=parseISO(e.data||e.giorno); if(d) set[startOfDay(d).getTime()]=1; });
+  return set;
+}
+function calHTML(base){
+  const marks=markedDays();
+  const y=base.getFullYear(), m=base.getMonth();
+  const first=new Date(y,m,1); let off=(first.getDay()+6)%7; // lunedì=0
+  const days=new Date(y,m+1,0).getDate();
+  const dows=['L','M','M','G','V','S','D'];
+  const lbl=base.toLocaleDateString('it-IT',{month:'long',year:'numeric'});
+  let cells=dows.map(d=>`<div class="dow">${d}</div>`).join('');
+  for(let i=0;i<off;i++) cells+=`<div class="cd muted"></div>`;
+  for(let d=1;d<=days;d++){
+    const dt=new Date(y,m,d); const t=startOfDay(dt).getTime();
+    const isToday=t===TODAY.getTime(); const mk=marks[t];
+    cells+=`<div class="cd ${isToday?'today':''} ${mk?'mk':''}">${d}</div>`;
+  }
+  return `<div class="cal-h"><button onclick="calStep(-1)" style="color:var(--text2)">‹</button>
+    <span style="text-transform:capitalize">${lbl}</span>
+    <button onclick="calStep(1)" style="color:var(--text2)">›</button></div>
+    <div class="cal">${cells}</div>`;
+}
+function buildCalendar(){ const el=document.getElementById('bigCal'); if(el) el.innerHTML=calHTML(calMonth); }
+function buildDashCal(){ const el=document.getElementById('dashCal'); if(el) el.innerHTML=calHTML(new Date(TODAY.getFullYear(),TODAY.getMonth(),1)); }
+function calStep(n){ calMonth=new Date(calMonth.getFullYear(),calMonth.getMonth()+n,1); buildCalendar(); }
+
+/* ================= MODULE FRAME (app reale incorporata) ================= */
+function openModule(k){
+  goWorkspace(null); setActiveNav(k);
+  const t = (NAV.find(n=>n.k===k)||TILES.find(x=>x.k===k)||{t:k});
+  const c=document.getElementById('content');
+  c.innerHTML = `<div class="frame-wrap">
+    <div class="frame-bar">
+      <span class="t">${esc(t.t||k)} <small>app condivisa · modifiche sincronizzate</small></span>
+      <div class="acts">
+        <button onclick="toggleWide(this)">Schermo intero</button>
+        <button onclick="document.getElementById('modFrame')&&document.getElementById('modFrame').contentWindow.location.reload()">Ricarica</button>
+        <button onclick="window.open('${APP_FILE}','_blank')">Apri in scheda</button>
+        <button onclick="go('dashboard')">✕ Chiudi</button>
+      </div>
+    </div>
+    <div class="frame-stage">
+      <div class="phone" id="phoneBox">
+        <iframe id="modFrame" src="${APP_FILE}" onload="frameOK()" onerror="frameFail()"></iframe>
+      </div>
+    </div>
+  </div>`;
+  // se il file non c'è (anteprima), mostra fallback dopo un attimo
+  clearTimeout(window._ft); window._ft=setTimeout(()=>{ try{
+    const f=document.getElementById('modFrame');
+    if(f && (!f.contentWindow || !f.contentWindow.document || f.contentWindow.document.body===null)) frameFail();
+  }catch(e){ /* cross-doc ok = caricato */ } }, 1400);
+}
+function frameOK(){ /* caricato correttamente */ }
+function frameFail(){
+  const box=document.getElementById('phoneBox'); if(!box) return;
+  box.classList.add('wide');
+  box.innerHTML = `<div style="height:100%;display:grid;place-items:center;padding:30px">
+    <div class="frame-fallback">${svg(I.alert,'')}<h3 style="margin-top:10px">App non trovata accanto a questo file</h3>
+    <p>Metti <code>${esc(APP_FILE)}</code> nella <b>stessa cartella</b> di <code>coco-office.html</code> sulla tua GitHub Pages.
+    Allora questo riquadro mostrerà l'app reale e ogni modifica resterà sincronizzata con lo smartphone.</p></div></div>`;
+}
+function toggleWide(btn){ const b=document.getElementById('phoneBox'); if(!b) return; const w=b.classList.toggle('wide'); btn.textContent=w?'Vista telefono':'Schermo intero'; }
+
+/* ================= SEARCH ================= */
+function onSearch(q){ q=(q||'').trim().toLowerCase(); if(!q){ if(curPage==='commesse') go('commesse'); return; }
+  // ricerca semplice nelle commesse
+  go('commesse');
+  const c=document.getElementById('content');
+  const list=DB.commesse.filter(x=>((x.nome||'')+' '+(x.cliente||'')).toLowerCase().includes(q));
+  c.querySelector('.card').innerHTML = list.length?tableCommesse(list.sort((a,b)=>0)):'<div class="empty">Nessun risultato per “'+esc(q)+'”.</div>';
+}
+
+/* ================= CLOUD PULL (opzionale, sicuro) ================= */
+/* Scarica lo snapshot da Firebase per popolare la dashboard su un PC nuovo.
+   Scrive le chiavi st_* SOLO se vuote (non sovrascrive dati locali freschi).
+   La scrittura/merge vera resta all'app reale incorporata. */
+let fbReady=false;
+function setSync(state,msg){
+  const led=document.getElementById('syncLed'), tt=document.getElementById('syncTitle'), mm=document.getElementById('syncMsg');
+  if(led) led.className='led '+(state||'');
+  if(tt) tt.textContent = state==='off'?'Non connesso':(state==='warn'?'In corso…':'Sincronizzato');
+  if(mm) mm.textContent = msg||'';
+  const lc=document.getElementById('lc-sync'); if(lc) lc.textContent='Sincronizzazione · '+(msg||'—');
+}
+function loadFB(){
+  if(window.firebase&&firebase.firestore) return Promise.resolve();
+  if(window._fbP) return window._fbP;
+  const base='https://www.gstatic.com/firebasejs/10.12.0/';
+  const add=src=>new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('SDK'));document.head.appendChild(s);});
+  window._fbP=add(base+'firebase-app-compat.js').then(()=>Promise.all([add(base+'firebase-auth-compat.js'),add(base+'firebase-firestore-compat.js')]));
+  return window._fbP;
+}
+async function cloudPull(interactive){
+  try{
+    setSync('warn','connessione…');
+    await loadFB();
+    if(!firebase.apps.length) firebase.initializeApp(FB_CONFIG);
+    // sessione mantenuta da Firebase se ci si è già loggati nell'app reale su questo browser
+    let user=firebase.auth().currentUser;
+    if(!user){
+      // prova a riusare la persistenza locale; se non c'è, chiedi credenziali
+      await new Promise(r=>{ const u=firebase.auth().onAuthStateChanged(x=>{user=x;u();r();}); setTimeout(r,1200); });
+    }
+    if(!user){
+      if(!interactive){ setSync('off','accedi dall’app'); return; }
+      const email=prompt('Email aziendale (stessa dell’app):'); if(!email) return setSync('off','annullato');
+      const pw=prompt('Password:'); if(pw==null) return setSync('off','annullato');
+      setSync('warn','accesso…');
+      await firebase.auth().signInWithEmailAndPassword(email.trim(),pw);
+      user=firebase.auth().currentUser;
+    }
+    setSync('warn','scarico dati…');
+    const doc=await firebase.firestore().collection('aziende').doc(AZIENDA).get();
+    if(!doc.exists){ setSync('warn','nessun dato in cloud'); return; }
+    const data=doc.data()||{}; const payload=data.payload; const d=payload&&payload.data?payload.data:payload;
+    if(!d){ setSync('warn','snapshot vuoto'); return; }
+    hydrateIfEmpty(d, payload);
+    loadLocal(); DB.demo=false; document.getElementById('demoBadge').classList.add('hidden');
+    setSync('','aggiornato da '+(data.updatedBy||'cloud'));
+    refreshAll();
+    toast('Dati aggiornati dal cloud');
+  }catch(e){ setSync('off', (e&&e.message)||'errore'); if(interactive) alert('Sync non riuscita: '+((e&&e.message)||e)); }
+}
+const KEYMAP={commesse:'st_c4',tecnici:'st_t4',materiali:'st_m4',movimenti:'st_mov4',eventi:'st_ev4',rapportini:'st_rp4',computi:'st_cm4',promemoria:'st_pm4',foglioOre:'st_fo4',checkins:'st_chk4',spostamenti:'st_spost',pianoSett:'st_psett',lavorazioni:'st_lav',diagnosi:'st_diag4',briefings:'st_bf4',aiRisposte:'st_ai4',timesheets:'st_ts4'};
+function hydrateIfEmpty(d, payload){
+  try{
+    Object.keys(KEYMAP).forEach(k=>{
+      if(d[k]==null) return;
+      const key=KEYMAP[k]; const cur=localStorage.getItem(key);
+      const empty = !cur || cur==='[]' || cur==='{}' || cur==='null';
+      if(empty) localStorage.setItem(key, JSON.stringify(d[k]));
+    });
+    if(payload&&payload.aziendaNome && !localStorage.getItem('st_az4')) localStorage.setItem('st_az4',payload.aziendaNome);
+  }catch(e){}
+}
+
+/* ================= MISC ================= */
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(window._tt); window._tt=setTimeout(()=>t.classList.remove('show'),2600); }
+function refreshAll(){
+  const k=kpis();
+  const nb=document.getElementById('notifBadge'); if(nb) nb.textContent=k.scad7+k.critic;
+  const naB=document.getElementById('navBadge'); if(naB){ if(k.scad7){ naB.textContent=k.scad7; naB.style.display='inline-block'; } else naB.style.display='none'; }
+  const az=DB.azienda||'SIE.TEL'; document.getElementById('azName').textContent=az.toUpperCase();
+  document.getElementById('userName').textContent='Ufficio';
+  document.getElementById('userAv').textContent=(az.replace(/[^A-Za-z]/g,'').slice(0,2)||'CC').toUpperCase();
+  renderLauncher();
+  go(curPage);
+  buildDashCal();
+}
+
+/* ================= DEMO DATA (solo se localStorage vuoto, per anteprima) ================= */
+function seedDemo(){
+  DB.demo=true; document.getElementById('demoBadge').classList.remove('hidden');
+  const dISO=n=>{ const d=new Date(TODAY); d.setDate(d.getDate()+n); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+  DB.azienda='SIE.TEL';
+  DB.commesse=[
+    {id:'c1',codice:'C-001',nome:'Impianto Residenza Bianchi',cliente:'Residenza Bianchi',fasi:[
+      {id:'f',nome:'Sopralluogo cantiere',stato:'completata',inizio:dISO(-12),fine:dISO(-9)},
+      {id:'f2',nome:'Posa quadro elettrico',stato:'cantiere',inizio:dISO(-3),fine:dISO(3)},
+      {id:'f3',nome:'Collaudo impianto',stato:'pianificata',inizio:dISO(6),fine:dISO(10)} ]},
+    {id:'c2',codice:'C-002',nome:'Antincendio Via Roma 45',cliente:'Via Roma 45',fasi:[
+      {id:'f',nome:'Consegna materiali',stato:'cantiere',inizio:dISO(-2),fine:dISO(2)},
+      {id:'f2',nome:'Installazione idranti',stato:'pianificata',inizio:dISO(4),fine:dISO(14)} ]},
+    {id:'c3',codice:'C-003',nome:'Cabina MT Edificio Verdi',cliente:'Edificio Verdi',fasi:[
+      {id:'f',nome:'Riunione coordinamento',stato:'cantiere',inizio:dISO(-1),fine:dISO(1)},
+      {id:'f2',nome:'Cablaggio strutturato',stato:'cantiere',inizio:dISO(0),fine:dISO(20)} ]},
+    {id:'c4',codice:'C-004',nome:'Complesso Le Rose',cliente:'Complesso Le Rose',fasi:[
+      {id:'f',nome:'Posa cavidotti',stato:'cantiere',inizio:dISO(-15),fine:dISO(-4)} ]},
+    {id:'c5',codice:'C-005',nome:'Villa Marechiaro',cliente:'Villa Marechiaro',fasi:[
+      {id:'f',nome:'Verifica stato lavori',stato:'cantiere',inizio:dISO(-8),fine:dISO(5)},
+      {id:'f2',nome:'Quadro fotovoltaico',stato:'completata',inizio:dISO(-20),fine:dISO(-10)} ]},
+  ];
+  DB.tecnici=[{id:'t1',nome:'Marco Rossi'},{id:'t2',nome:'Luca Bianchi'},{id:'t3',nome:'Andrea Verdi'}];
+  DB.materiali=[
+    {id:'m1',nome:'Cavo FG16OR16 3G2.5',unita:'m',scorta:120,soglia:200,fornitore:'Elettro SRL'},
+    {id:'m2',nome:'Interruttore magnetotermico 16A',unita:'pz',scorta:8,soglia:15,fornitore:'ABB'},
+    {id:'m3',nome:'Estintore 6kg polvere',unita:'pz',scorta:24,soglia:10,fornitore:'AntincendioPro'},
+    {id:'m4',nome:'Tubo corrugato Ø25',unita:'m',scorta:340,soglia:100,fornitore:'Elettro SRL'},
+  ];
+  DB.movimenti=[{id:'mv1',quando:TODAY.getTime(),tipo:'scarico',qty:40,articoloId:'m1',autore:'Marco Rossi'}];
+  DB.rapportini=[{id:'r1',commessaId:'c1',ts:TODAY.getTime()-3600000}];
+  DB.promemoria=[{id:'p1',testo:'Materiale in arrivo domani per C-002',ts:TODAY.getTime()-7200000}];
+}
+
+/* ================= INIT ================= */
+function init(){
+  loadLocal();
+  if(!DB.commesse.length && !DB.materiali.length) seedDemo();
+  renderNav(); renderLauncher(); refreshAll();
+  // mostra stato sync iniziale
+  if(window.localStorage && localStorage.getItem('coco_fb_email')) setSync('warn','tocca per scaricare');
+  else setSync('off','accedi dall’app o sincronizza');
+}
+init();
+</script>
+</body>
+</html>
