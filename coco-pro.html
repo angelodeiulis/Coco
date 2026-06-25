@@ -1061,7 +1061,7 @@ textarea{resize:vertical;min-height:60px;}
         <div id="mf-bozza-list" style="margin-bottom:6px"></div>
         <div id="mf-bozza-add" style="display:flex;gap:8px">
           <input type="text" id="mf-bozza-new" placeholder="Aggiungi voce…" onkeydown="if(event.key==='Enter'){event.preventDefault();addBozzaVoce();}" style="flex:1;min-width:0;background:var(--surface2,#1c2030);border:1px dashed var(--border,#2a2f42);border-radius:10px;color:inherit;padding:11px;font-size:14px;font-family:inherit">
-          <select id="mf-bozza-unit" title="Unità di misura" style="width:76px;flex-shrink:0;background:var(--surface2,#1c2030);border:1px dashed var(--border,#2a2f42);border-radius:10px;color:inherit;padding:11px 6px;font-size:13px;font-family:inherit"><option value="">u.m.</option><option value="pz">pz</option><option value="m">m</option><option value="kg">kg</option><option value="m²">m²</option><option value="lt">lt</option><option value="conf">conf</option><option value="rotolo">rotolo</option><option value="sacco">sacco</option><option value="barra">barra</option></select>
+          <select id="mf-bozza-unit" title="Unità di misura" style="width:76px;flex-shrink:0;background:var(--surface2,#1c2030);border:1px dashed var(--border,#2a2f42);border-radius:10px;color:inherit;padding:11px 6px;font-size:13px;font-family:inherit"><option value="">u.m.</option><option value="pz">pz</option><option value="m">m</option><option value="kg">kg</option><option value="m²">m²</option><option value="lt">lt</option><option value="conf">conf</option><option value="rotolo">rotolo</option><option value="matassa">matassa</option><option value="sacco">sacco</option><option value="barra">barra</option></select>
           <button type="button" onclick="addBozzaVoce()" style="border:none;border-radius:10px;background:rgba(79,156,249,.18);color:#cfe2ff;font-size:14px;font-weight:700;font-family:inherit;padding:0 15px;flex-shrink:0">+ Agg.</button>
         </div>
       </div>
@@ -1141,7 +1141,7 @@ textarea{resize:vertical;min-height:60px;}
             <option value="Altro">Altro</option>
           </optgroup>
         </select></div>
-        <div class="ff"><label>Unità misura</label><select id="mm-unit"><option value="pz">pz</option><option value="m">m</option><option value="mt">mt</option><option value="kg">kg</option><option value="l">l</option><option value="conf">conf</option><option value="rotolo">rotolo</option><option value="m²">m²</option></select></div>
+        <div class="ff"><label>Unità misura</label><select id="mm-unit"><option value="pz">pz</option><option value="m">m</option><option value="mt">mt</option><option value="kg">kg</option><option value="l">l</option><option value="conf">conf</option><option value="rotolo">rotolo</option><option value="matassa">matassa</option><option value="m²">m²</option></select></div>
       </div>
       <div class="form-row">
         <div class="ff"><label>Tipologia</label><input type="text" id="mm-tip" placeholder="Es. FG16OR16, RJ45 cat.6, 1P+N 16A..."></div>
@@ -2465,7 +2465,74 @@ const MATERIALI_INIZIALI=[
  {id:'mi_fissaggio_vario_staffe',categoria:'Fissaggio',tipologia:'Vario',variante:'Staffe',unita:'pz',scorta:0,fornitore:'',nome:'Vario Staffe'},
  {id:'mi_fissaggio_vario_morsetti',categoria:'Fissaggio',tipologia:'Vario',variante:'Morsetti',unita:'pz',scorta:0,fornitore:'',nome:'Vario Morsetti'},
  {id:'mi_fissaggio_vario_fascette',categoria:'Fissaggio',tipologia:'Vario',variante:'Fascette',unita:'pz',scorta:0,fornitore:'',nome:'Vario Fascette'},
- {id:'mi_fissaggio_vario_collari',categoria:'Fissaggio',tipologia:'Vario',variante:'Collari',unita:'pz',scorta:0,fornitore:'',nome:'Vario Collari'}
+ {id:'mi_fissaggio_vario_collari',categoria:'Fissaggio',tipologia:'Vario',variante:'Collari',unita:'pz',scorta:0,fornitore:'',nome:'Vario Collari'},
+ /* ── CENSIMENTO MAGAZZINO 2026 (filo FS17, cavi, diflex, raccorderia PVC, scatole IP) ── */
+ {id:'mi_cavo_fs17_1_5_blu',categoria:'Cavo',tipologia:'FS17',variante:'1,5 blu',colore:'blu',unita:'matassa',scorta:0,fornitore:'',codice:'FS17-1.5-BL',nome:'FS17 1,5 blu'},
+ {id:'mi_cavo_fs17_1_5_marrone',categoria:'Cavo',tipologia:'FS17',variante:'1,5 marrone',colore:'marrone',unita:'matassa',scorta:0,fornitore:'',codice:'FS17-1.5-MR',nome:'FS17 1,5 marrone'},
+ {id:'mi_cavo_fs17_1_5_nero',categoria:'Cavo',tipologia:'FS17',variante:'1,5 nero',colore:'nero',unita:'matassa',scorta:0,fornitore:'',codice:'FS17-1.5-NR',nome:'FS17 1,5 nero'},
+ {id:'mi_cavo_fs17_1_5_grigio',categoria:'Cavo',tipologia:'FS17',variante:'1,5 grigio',colore:'grigio',unita:'matassa',scorta:0,fornitore:'',codice:'FS17-1.5-GR',nome:'FS17 1,5 grigio'},
+ {id:'mi_cavo_fs17_1_5_giallo_verde',categoria:'Cavo',tipologia:'FS17',variante:'1,5 giallo-verde',colore:'giallo-verde',unita:'matassa',scorta:0,fornitore:'',codice:'FS17-1.5-GV',nome:'FS17 1,5 giallo-verde'},
+ {id:'mi_cavo_fs17_2_5_blu',categoria:'Cavo',tipologia:'FS17',variante:'2,5 blu',colore:'blu',unita:'matassa',scorta:0,fornitore:'',codice:'FS17-2.5-BL',nome:'FS17 2,5 blu'},
+ {id:'mi_cavo_fs17_2_5_marrone',categoria:'Cavo',tipologia:'FS17',variante:'2,5 marrone',colore:'marrone',unita:'matassa',scorta:0,fornitore:'',codice:'FS17-2.5-MR',nome:'FS17 2,5 marrone'},
+ {id:'mi_cavo_fs17_2_5_nero',categoria:'Cavo',tipologia:'FS17',variante:'2,5 nero',colore:'nero',unita:'matassa',scorta:0,fornitore:'',codice:'FS17-2.5-NR',nome:'FS17 2,5 nero'},
+ {id:'mi_cavo_fs17_2_5_grigio',categoria:'Cavo',tipologia:'FS17',variante:'2,5 grigio',colore:'grigio',unita:'matassa',scorta:0,fornitore:'',codice:'FS17-2.5-GR',nome:'FS17 2,5 grigio'},
+ {id:'mi_cavo_fs17_2_5_giallo_verde',categoria:'Cavo',tipologia:'FS17',variante:'2,5 giallo-verde',colore:'giallo-verde',unita:'matassa',scorta:0,fornitore:'',codice:'FS17-2.5-GV',nome:'FS17 2,5 giallo-verde'},
+ {id:'mi_cavo_fs17_4_blu',categoria:'Cavo',tipologia:'FS17',variante:'4 blu',colore:'blu',unita:'matassa',scorta:0,fornitore:'',codice:'FS17-4-BL',nome:'FS17 4 blu'},
+ {id:'mi_cavo_fs17_4_marrone',categoria:'Cavo',tipologia:'FS17',variante:'4 marrone',colore:'marrone',unita:'matassa',scorta:0,fornitore:'',codice:'FS17-4-MR',nome:'FS17 4 marrone'},
+ {id:'mi_cavo_fs17_4_nero',categoria:'Cavo',tipologia:'FS17',variante:'4 nero',colore:'nero',unita:'matassa',scorta:0,fornitore:'',codice:'FS17-4-NR',nome:'FS17 4 nero'},
+ {id:'mi_cavo_fs17_4_grigio',categoria:'Cavo',tipologia:'FS17',variante:'4 grigio',colore:'grigio',unita:'matassa',scorta:0,fornitore:'',codice:'FS17-4-GR',nome:'FS17 4 grigio'},
+ {id:'mi_cavo_fs17_4_giallo_verde',categoria:'Cavo',tipologia:'FS17',variante:'4 giallo-verde',colore:'giallo-verde',unita:'matassa',scorta:0,fornitore:'',codice:'FS17-4-GV',nome:'FS17 4 giallo-verde'},
+ {id:'mi_cavo_fs17_6_blu',categoria:'Cavo',tipologia:'FS17',variante:'6 blu',colore:'blu',unita:'matassa',scorta:0,fornitore:'',codice:'FS17-6-BL',nome:'FS17 6 blu'},
+ {id:'mi_cavo_fs17_6_marrone',categoria:'Cavo',tipologia:'FS17',variante:'6 marrone',colore:'marrone',unita:'matassa',scorta:0,fornitore:'',codice:'FS17-6-MR',nome:'FS17 6 marrone'},
+ {id:'mi_cavo_fs17_6_nero',categoria:'Cavo',tipologia:'FS17',variante:'6 nero',colore:'nero',unita:'matassa',scorta:0,fornitore:'',codice:'FS17-6-NR',nome:'FS17 6 nero'},
+ {id:'mi_cavo_fs17_6_grigio',categoria:'Cavo',tipologia:'FS17',variante:'6 grigio',colore:'grigio',unita:'matassa',scorta:0,fornitore:'',codice:'FS17-6-GR',nome:'FS17 6 grigio'},
+ {id:'mi_cavo_fs17_6_giallo_verde',categoria:'Cavo',tipologia:'FS17',variante:'6 giallo-verde',colore:'giallo-verde',unita:'matassa',scorta:0,fornitore:'',codice:'FS17-6-GV',nome:'FS17 6 giallo-verde'},
+ {id:'mi_cavo_fror_3g4',categoria:'Cavo',tipologia:'FROR',variante:'3G4',unita:'m',scorta:0,fornitore:'',codice:'FROR-3G4',nome:'FROR 3G4'},
+ {id:'mi_cavo_fror_3g6',categoria:'Cavo',tipologia:'FROR',variante:'3G6',unita:'m',scorta:0,fornitore:'',codice:'FROR-3G6',nome:'FROR 3G6'},
+ {id:'mi_cavo_fror_5g1_5',categoria:'Cavo',tipologia:'FROR',variante:'5G1,5',unita:'m',scorta:0,fornitore:'',codice:'FROR-5G1.5',nome:'FROR 5G1,5'},
+ {id:'mi_cavo_fror_5g2_5',categoria:'Cavo',tipologia:'FROR',variante:'5G2,5',unita:'m',scorta:0,fornitore:'',codice:'FROR-5G2.5',nome:'FROR 5G2,5'},
+ {id:'mi_cavo_fror_5g4',categoria:'Cavo',tipologia:'FROR',variante:'5G4',unita:'m',scorta:0,fornitore:'',codice:'FROR-5G4',nome:'FROR 5G4'},
+ {id:'mi_cavo_fg16or16_2x1_5',categoria:'Cavo',tipologia:'FG16OR16',variante:'2x1,5',unita:'m',scorta:0,fornitore:'',codice:'FG16-2x1.5',nome:'FG16OR16 2x1,5'},
+ {id:'mi_cavo_fg16or16_3g6',categoria:'Cavo',tipologia:'FG16OR16',variante:'3G6',unita:'m',scorta:0,fornitore:'',codice:'FG16-3G6',nome:'FG16OR16 3G6'},
+ {id:'mi_cavo_fg16or16_5g1_5',categoria:'Cavo',tipologia:'FG16OR16',variante:'5G1,5',unita:'m',scorta:0,fornitore:'',codice:'FG16-5G1.5',nome:'FG16OR16 5G1,5'},
+ {id:'mi_cavo_fg16or16_5g4',categoria:'Cavo',tipologia:'FG16OR16',variante:'5G4',unita:'m',scorta:0,fornitore:'',codice:'FG16-5G4',nome:'FG16OR16 5G4'},
+ {id:'mi_tubo_diflex_20',categoria:'Tubo',tipologia:'Diflex',variante:'Ø20',unita:'matassa',scorta:0,fornitore:'',codice:'DIFLEX-20',nome:'Diflex Ø20'},
+ {id:'mi_tubo_diflex_25',categoria:'Tubo',tipologia:'Diflex',variante:'Ø25',unita:'matassa',scorta:0,fornitore:'',codice:'DIFLEX-25',nome:'Diflex Ø25'},
+ {id:'mi_tubo_diflex_32',categoria:'Tubo',tipologia:'Diflex',variante:'Ø32',unita:'matassa',scorta:0,fornitore:'',codice:'DIFLEX-32',nome:'Diflex Ø32'},
+ {id:'mi_tubo_raccorderia_pvc_giunto_tubo_tubo_ip40_20',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Giunto tubo-tubo IP40 Ø20',unita:'pz',scorta:0,fornitore:'',codice:'RACC-GG-IP40-20',nome:'Raccorderia Giunto tubo-tubo IP40 Ø20'},
+ {id:'mi_tubo_raccorderia_pvc_giunto_tubo_tubo_ip40_25',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Giunto tubo-tubo IP40 Ø25',unita:'pz',scorta:0,fornitore:'',codice:'RACC-GG-IP40-25',nome:'Raccorderia Giunto tubo-tubo IP40 Ø25'},
+ {id:'mi_tubo_raccorderia_pvc_giunto_tubo_tubo_ip40_32',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Giunto tubo-tubo IP40 Ø32',unita:'pz',scorta:0,fornitore:'',codice:'RACC-GG-IP40-32',nome:'Raccorderia Giunto tubo-tubo IP40 Ø32'},
+ {id:'mi_tubo_raccorderia_pvc_giunto_tubo_tubo_ip65_20',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Giunto tubo-tubo IP65 Ø20',unita:'pz',scorta:0,fornitore:'',codice:'RACC-GG-IP65-20',nome:'Raccorderia Giunto tubo-tubo IP65 Ø20'},
+ {id:'mi_tubo_raccorderia_pvc_giunto_tubo_tubo_ip65_25',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Giunto tubo-tubo IP65 Ø25',unita:'pz',scorta:0,fornitore:'',codice:'RACC-GG-IP65-25',nome:'Raccorderia Giunto tubo-tubo IP65 Ø25'},
+ {id:'mi_tubo_raccorderia_pvc_giunto_tubo_tubo_ip65_32',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Giunto tubo-tubo IP65 Ø32',unita:'pz',scorta:0,fornitore:'',codice:'RACC-GG-IP65-32',nome:'Raccorderia Giunto tubo-tubo IP65 Ø32'},
+ {id:'mi_tubo_raccorderia_pvc_raccordo_tubo_scatola_20',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Raccordo tubo-scatola Ø20',unita:'pz',scorta:0,fornitore:'',codice:'RACC-TS-20',nome:'Raccorderia Raccordo tubo-scatola Ø20'},
+ {id:'mi_tubo_raccorderia_pvc_raccordo_tubo_scatola_25',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Raccordo tubo-scatola Ø25',unita:'pz',scorta:0,fornitore:'',codice:'RACC-TS-25',nome:'Raccorderia Raccordo tubo-scatola Ø25'},
+ {id:'mi_tubo_raccorderia_pvc_raccordo_tubo_scatola_32',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Raccordo tubo-scatola Ø32',unita:'pz',scorta:0,fornitore:'',codice:'RACC-TS-32',nome:'Raccorderia Raccordo tubo-scatola Ø32'},
+ {id:'mi_tubo_raccorderia_pvc_raccordo_tubo_diflex_20',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Raccordo tubo-diflex Ø20',unita:'pz',scorta:0,fornitore:'',codice:'RACC-TD-20',nome:'Raccorderia Raccordo tubo-diflex Ø20'},
+ {id:'mi_tubo_raccorderia_pvc_raccordo_tubo_diflex_25',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Raccordo tubo-diflex Ø25',unita:'pz',scorta:0,fornitore:'',codice:'RACC-TD-25',nome:'Raccorderia Raccordo tubo-diflex Ø25'},
+ {id:'mi_tubo_raccorderia_pvc_raccordo_tubo_diflex_32',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Raccordo tubo-diflex Ø32',unita:'pz',scorta:0,fornitore:'',codice:'RACC-TD-32',nome:'Raccorderia Raccordo tubo-diflex Ø32'},
+ {id:'mi_tubo_raccorderia_pvc_curva_ip40_20',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Curva IP40 Ø20',unita:'pz',scorta:0,fornitore:'',codice:'CURVA-IP40-20',nome:'Raccorderia Curva IP40 Ø20'},
+ {id:'mi_tubo_raccorderia_pvc_curva_ip40_25',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Curva IP40 Ø25',unita:'pz',scorta:0,fornitore:'',codice:'CURVA-IP40-25',nome:'Raccorderia Curva IP40 Ø25'},
+ {id:'mi_tubo_raccorderia_pvc_curva_ip40_32',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Curva IP40 Ø32',unita:'pz',scorta:0,fornitore:'',codice:'CURVA-IP40-32',nome:'Raccorderia Curva IP40 Ø32'},
+ {id:'mi_tubo_raccorderia_pvc_curva_ip65_20',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Curva IP65 Ø20',unita:'pz',scorta:0,fornitore:'',codice:'CURVA-IP65-20',nome:'Raccorderia Curva IP65 Ø20'},
+ {id:'mi_tubo_raccorderia_pvc_curva_ip65_25',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Curva IP65 Ø25',unita:'pz',scorta:0,fornitore:'',codice:'CURVA-IP65-25',nome:'Raccorderia Curva IP65 Ø25'},
+ {id:'mi_tubo_raccorderia_pvc_curva_ip65_32',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Curva IP65 Ø32',unita:'pz',scorta:0,fornitore:'',codice:'CURVA-IP65-32',nome:'Raccorderia Curva IP65 Ø32'},
+ {id:'mi_tubo_raccorderia_pvc_collare_20',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Collare Ø20',unita:'pz',scorta:0,fornitore:'',codice:'COLL-20',nome:'Raccorderia Collare Ø20'},
+ {id:'mi_tubo_raccorderia_pvc_collare_25',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Collare Ø25',unita:'pz',scorta:0,fornitore:'',codice:'COLL-25',nome:'Raccorderia Collare Ø25'},
+ {id:'mi_tubo_raccorderia_pvc_collare_32',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Collare Ø32',unita:'pz',scorta:0,fornitore:'',codice:'COLL-32',nome:'Raccorderia Collare Ø32'},
+ {id:'mi_tubo_raccorderia_pvc_collare_a_fascetta_20',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Collare a fascetta Ø20',unita:'pz',scorta:0,fornitore:'',codice:'COLL-FASC-20',nome:'Raccorderia Collare a fascetta Ø20'},
+ {id:'mi_tubo_raccorderia_pvc_collare_a_fascetta_25',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Collare a fascetta Ø25',unita:'pz',scorta:0,fornitore:'',codice:'COLL-FASC-25',nome:'Raccorderia Collare a fascetta Ø25'},
+ {id:'mi_tubo_raccorderia_pvc_collare_a_fascetta_32',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Collare a fascetta Ø32',unita:'pz',scorta:0,fornitore:'',codice:'COLL-FASC-32',nome:'Raccorderia Collare a fascetta Ø32'},
+ {id:'mi_tubo_raccorderia_pvc_supporto_a_pressione_16_27',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Supporto a pressione 16-27',unita:'pz',scorta:0,fornitore:'',codice:'SUPP-PRESS-16-27',nome:'Raccorderia Supporto a pressione 16-27'},
+ {id:'mi_tubo_raccorderia_pvc_supporto_a_pressione_20_32',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Supporto a pressione 20-32',unita:'pz',scorta:0,fornitore:'',codice:'SUPP-PRESS-20-32',nome:'Raccorderia Supporto a pressione 20-32'},
+ {id:'mi_tubo_raccorderia_pvc_supporto_a_pressione_25_37',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Supporto a pressione 25-37',unita:'pz',scorta:0,fornitore:'',codice:'SUPP-PRESS-25-37',nome:'Raccorderia Supporto a pressione 25-37'},
+ {id:'mi_tubo_raccorderia_pvc_supporto_a_pressione_32_50',categoria:'Tubo',tipologia:'Raccorderia PVC',variante:'Supporto a pressione 32-50',unita:'pz',scorta:0,fornitore:'',codice:'SUPP-PRESS-32-50',nome:'Raccorderia Supporto a pressione 32-50'},
+ {id:'mi_scatola_derivazione_ip40_100x100',categoria:'Scatola',tipologia:'Derivazione',variante:'IP40 100x100',unita:'pz',scorta:0,fornitore:'',codice:'SCAT-IP40-100',nome:'Derivazione IP40 100x100'},
+ {id:'mi_scatola_derivazione_ip40_150x110',categoria:'Scatola',tipologia:'Derivazione',variante:'IP40 150x110',unita:'pz',scorta:0,fornitore:'',codice:'SCAT-IP40-150',nome:'Derivazione IP40 150x110'},
+ {id:'mi_scatola_derivazione_ip40_190x140',categoria:'Scatola',tipologia:'Derivazione',variante:'IP40 190x140',unita:'pz',scorta:0,fornitore:'',codice:'SCAT-IP40-190',nome:'Derivazione IP40 190x140'},
+ {id:'mi_scatola_derivazione_ip65_100x100',categoria:'Scatola',tipologia:'Derivazione',variante:'IP65 100x100',unita:'pz',scorta:0,fornitore:'',codice:'SCAT-IP65-100',nome:'Derivazione stagna IP65 100x100'},
+ {id:'mi_scatola_derivazione_ip65_150x110',categoria:'Scatola',tipologia:'Derivazione',variante:'IP65 150x110',unita:'pz',scorta:0,fornitore:'',codice:'SCAT-IP65-150',nome:'Derivazione stagna IP65 150x110'},
+ {id:'mi_scatola_derivazione_ip65_190x140',categoria:'Scatola',tipologia:'Derivazione',variante:'IP65 190x140',unita:'pz',scorta:0,fornitore:'',codice:'SCAT-IP65-190',nome:'Derivazione stagna IP65 190x140'}
 ];
 function caricaMateriali(){
   if(typeof closeHdrMenu==='function') closeHdrMenu();
@@ -7686,7 +7753,7 @@ function matCampiHTML(p,v){
   const fld='background:var(--surface2,#1c2030);border:1px solid var(--border);border-radius:10px;color:inherit;padding:11px;font-family:inherit;font-size:15px;box-sizing:border-box;width:100%';
   const dl=(id,arr)=>'<datalist id="'+id+'">'+arr.map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist>';
   const pezzi=[...new Set(PEZZI_BASE.concat(_matSugg('pezzo')))];
-  const unitaOpt=['pz','m','mt','kg','l','conf','rotolo','m²'];
+  const unitaOpt=['pz','m','mt','matassa','kg','l','conf','rotolo','m²'];
   const fields=[['set','Settore',(typeof getSettori==='function'?getSettori():[]),(v.settore||'Elettrico')],
     ['cat','Categoria',_matSugg('categoria'),(v.categoria||'')],
     ['tip','Tipo / Tipologia',_matSugg('tipologia'),(v.tipologia||'')],
@@ -7818,7 +7885,7 @@ function updateMatQty(id,val){const item=state.faseMaterialiSel.find(x=>x.id===i
 function removeMatFromFase(id){state.faseMaterialiSel=state.faseMaterialiSel.filter(x=>x.id!==id);renderMaterialiList();}
 function _bzN(x){ if(x==null)return''; if(typeof x==='string')return x; return String(x.n!=null?x.n:(x.nome!=null?x.nome:''))||''; }
 function _bzU(x){ if(x&&typeof x==='object')return String(x.u!=null?x.u:(x.unita!=null?x.unita:''))||''; return ''; }
-function _bzUMopts(cur){ var L=['pz','m','kg','m²','lt','conf','rotolo','sacco','barra']; var o='<option value="">u.m.</option>'; for(var i=0;i<L.length;i++){ var u=L[i]; o+='<option value="'+u+'"'+(u===cur?' selected':'')+'>'+u+'</option>'; } return o; }
+function _bzUMopts(cur){ var L=['pz','m','kg','m²','lt','conf','rotolo','matassa','sacco','barra']; var o='<option value="">u.m.</option>'; for(var i=0;i<L.length;i++){ var u=L[i]; o+='<option value="'+u+'"'+(u===cur?' selected':'')+'>'+u+'</option>'; } return o; }
 function _bzClean(arr){ return (arr||[]).map(function(x){return {n:_bzN(x).trim(),u:_bzU(x)};}).filter(function(o){return o.n;}); }
 function bozzaSetU(i,val){ if(!state.faseBozzaSel)state.faseBozzaSel=[]; state.faseBozzaSel[i]={n:_bzN(state.faseBozzaSel[i]),u:val}; }
 function renderBozzaList(){
